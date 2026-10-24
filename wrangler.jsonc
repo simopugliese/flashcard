@@ -1,14 +1,34 @@
 {
-  "name": "flashcard",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./public" },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "flashcard",
-      "database_id": "local",
-      "migrations_dir": "drizzle"
-    }
-  ]
+	"name": "flashcard",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"workers_dev": false,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./public"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "flashcard",
+			"database_id": "489c9264-6662-4e35-bb32-8bd9c214b609",
+			"migrations_dir": "drizzle"
+		}
+	],
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": false,
+			"persist": false
+		},
+		"traces": {
+			"enabled": false,
+			"head_sampling_rate": 1,
+			"persist": true
+		},
+		"issue_detection": {
+			"enabled": true
+		}
+	},
 }
