@@ -1,0 +1,208 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "205e9d28-8a92-49ce-8b02-c9f9dc405df7",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "argomento": {
+      "name": "argomento",
+      "columns": {
+        "id_argomento": {
+          "name": "id_argomento",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nome_argomento": {
+          "name": "nome_argomento",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id_materia": {
+          "name": "id_materia",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "argomento_id_materia_materia_id_materia_fk": {
+          "name": "argomento_id_materia_materia_id_materia_fk",
+          "tableFrom": "argomento",
+          "tableTo": "materia",
+          "columnsFrom": [
+            "id_materia"
+          ],
+          "columnsTo": [
+            "id_materia"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "carta": {
+      "name": "carta",
+      "columns": {
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "domanda": {
+          "name": "domanda",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "risposta": {
+          "name": "risposta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "difficolta": {
+          "name": "difficolta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "id_argomento": {
+          "name": "id_argomento",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "carta_id_argomento_argomento_id_argomento_fk": {
+          "name": "carta_id_argomento_argomento_id_argomento_fk",
+          "tableFrom": "carta",
+          "tableTo": "argomento",
+          "columnsFrom": [
+            "id_argomento"
+          ],
+          "columnsTo": [
+            "id_argomento"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "materia": {
+      "name": "materia",
+      "columns": {
+        "id_materia": {
+          "name": "id_materia",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nome_materia": {
+          "name": "nome_materia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ripasso": {
+      "name": "ripasso",
+      "columns": {
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ultimo_ripasso": {
+          "name": "ultimo_ripasso",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "prossimo_ripasso": {
+          "name": "prossimo_ripasso",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_esito": {
+          "name": "media_esito",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "numero_ripassi": {
+          "name": "numero_ripassi",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ripasso_id_carta_carta_id_carta_fk": {
+          "name": "ripasso_id_carta_carta_id_carta_fk",
+          "tableFrom": "ripasso",
+          "tableTo": "carta",
+          "columnsFrom": [
+            "id_carta"
+          ],
+          "columnsTo": [
+            "id_carta"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

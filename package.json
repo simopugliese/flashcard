@@ -1,0 +1,22 @@
+{
+  "name": "flashcard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply flashcard --local",
+    "db:migrate:remote": "wrangler d1 migrations apply flashcard --remote"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261024.1",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.152.0"
+  }
+}

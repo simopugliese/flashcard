@@ -1,0 +1,14 @@
+{
+  "name": "flashcard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./public" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flashcard",
+      "database_id": "local",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
