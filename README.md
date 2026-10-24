@@ -2,22 +2,25 @@
 
 Applicazione web per creare flashcard e ripassarle con un sistema di ripasso programmato.
 Ogni carta appartiene a un argomento, ogni argomento a una materia. Dopo ogni risposta l'utente si dà un voto da 0 a 5 e il backend pianifica il ripasso successivo.
+Durante la giornata le carte da ripassare arrivano anche su Telegram, a orari casuali (vedi [Bot Telegram](#bot-telegram)).
 
 ## Architettura
 
-Un unico **Cloudflare Worker** serve sia le API sia il frontend.
+Un unico **Cloudflare Worker** serve le API, il frontend e il webhook del bot Telegram; un Cron Trigger lo attiva ogni 10 minuti per l'invio delle domande.
 
 ```
 flashcard/
 ├── src/
 │   ├── schema.ts        tabelle del database (Drizzle ORM)
-│   └── index.ts         tutte le API (Hono)
+│   ├── index.ts         tutte le API (Hono) e punto d'ingresso del Worker
+│   ├── ripasso.ts       carte da ripassare e registrazione del voto, usate da API e bot
+│   └── telegram.ts      bot Telegram: invio programmato e gestione dei click
 ├── public/
 │   ├── index.html       interfaccia (Bootstrap da CDN)
 │   └── app.js           logica del frontend (JavaScript puro)
 ├── drizzle/             migrazioni SQL generate da drizzle-kit
 ├── drizzle.config.ts
-├── wrangler.jsonc       configurazione Worker, asset statici e D1
+├── wrangler.jsonc       configurazione Worker, dominio, cron, asset statici e D1
 └── package.json
 ```
 
@@ -37,6 +40,7 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 | `argomento` | `id_argomento`, `nome_argomento`, `id_materia` |
 | `carta` | `id_carta`, `domanda`, `risposta`, `difficolta` (default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
+| `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
 - Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte e i dati di ripasso.
 - Il ripasso viene creato automaticamente insieme alla carta, con `prossimo_ripasso` = oggi.
@@ -50,6 +54,7 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
   - la media si aggiorna con `(media × n + voto) / (n + 1)`;
   - con un voto da 0 a 2 la carta torna **domani**;
   - con un voto da 3 a 5 torna tra **media × numero_ripassi** giorni (arrotondato per eccesso).
+- Un voto viene registrato solo se nel frattempo la carta non è stata ripassata: un doppio click o un vecchio messaggio Telegram non possono sovrascrivere un ripasso più recente.
 
 ## API
 
@@ -74,10 +79,12 @@ Tutte le richieste e risposte sono in JSON.
 | DELETE | `/carte/:id` | – | 204 |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
+| POST | `/telegram/webhook` | update di Telegram | 200 (401 senza il secret corretto) |
 
 Errori:
 - `400` con `{ "errore": "messaggio" }`: dati non validi o riferimenti inesistenti;
-- `404` (testo semplice): risorsa non trovata.
+- `404` (testo semplice): risorsa non trovata;
+- `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto.
 
 Esempio:
 
@@ -97,6 +104,8 @@ npm run dev
 
 L'app è disponibile su <http://localhost:8787>. Il database locale viene salvato in `.wrangler/`.
 
+Per provare l'invio delle domande serve il file `.dev.vars` (vedi [Configurazione](#configurazione)); poi avvia `npx wrangler dev --test-scheduled` e apri <http://localhost:8787/__scheduled> per eseguire il cron a mano. I click sui bottoni arrivano solo al Worker pubblicato, perché il webhook punta al dominio pubblico.
+
 ## Deploy su Cloudflare
 
 1. Accedi al tuo account Cloudflare:
@@ -108,17 +117,16 @@ L'app è disponibile su <http://localhost:8787>. Il database locale viene salvat
    npx wrangler d1 create flashcard
    ```
 3. Copia il `database_id` restituito in `wrangler.jsonc`, al posto di `"local"`, poi fai commit e push della modifica. L'ID non è un segreto.
+   Nello stesso file, in `routes`, metti il tuo dominio (deve essere gestito da Cloudflare): il Worker viene pubblicato come custom domain e l'indirizzo `workers.dev` resta disattivato.
 4. Crea le tabelle nel database remoto:
    ```bash
    npm run db:migrate:remote
    ```
-5. Pubblica il Worker, che contiene sia le API sia il frontend:
+5. Pubblica il Worker, che contiene API, frontend e bot:
    ```bash
    npm run deploy
    ```
-   Se è il tuo primo Worker, Wrangler ti chiede di scegliere un sottodominio `workers.dev`.
-
-Al termine, Wrangler stampa l'indirizzo pubblico `https://flashcard.<tuo-sottodominio>.workers.dev`.
+   Nell'output devono comparire il dominio `(custom domain)` e `schedule: */10 * * * *`.
 
 Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo nel database locale.
 
@@ -129,8 +137,55 @@ Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo 
 
 ### Proteggere l'accesso
 
-L'app non ha autenticazione: chiunque conosca l'indirizzo pubblico può leggere e modificare i dati.
-Per limitarlo, nella dashboard di Cloudflare vai su *Workers & Pages → flashcard → Settings → Domains & Routes* e attiva [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) sul dominio `workers.dev`, consentendo l'accesso solo alla tua email.
+L'app non ha autenticazione propria: chiunque raggiunga il dominio può leggere e modificare i dati.
+Proteggilo con [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/), da *Zero Trust → Access → Applications*:
+
+1. un'applicazione **Self-hosted** su tutto il dominio, con una policy **Allow** solo per la tua email;
+2. un'applicazione **Self-hosted** sullo stesso dominio con path `telegram/webhook`, con una policy **Bypass** che include solo gli IP da cui Telegram invia i webhook: `149.154.160.0/20` e `91.108.4.0/22`. Il percorso più specifico prevale, quindi tutto il resto resta dietro login.
+
+Verifica:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://<dominio>/materie                      # 302: login di Access
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<dominio>/telegram/webhook     # 403: non sei Telegram
+```
+
+## Bot Telegram
+
+Tra le **9 e le 22** (ora italiana), a distanza casuale tra **1 e 3 ore**, il bot invia una carta scelta a caso tra quelle da ripassare. Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
+
+Funzionamento:
+- il cron gira ogni 10 minuti e invia solo quando è passato l'orario salvato in `invio_telegram.prossimo_invio`, poi ne sceglie uno nuovo;
+- se non ci sono carte da ripassare non invia nulla;
+- i click arrivano da Telegram al webhook `POST /telegram/webhook`, che risponde sempre 200 alle richieste autentiche (altrimenti Telegram le ripeterebbe).
+
+### Sicurezza
+
+- Il webhook è l'unico percorso escluso da Access, e solo per gli IP di Telegram.
+- Il Worker accetta la richiesta solo se l'header `X-Telegram-Bot-Api-Secret-Token` coincide con `TELEGRAM_WEBHOOK_SECRET` (confronto a tempo costante), altrimenti risponde 401.
+- Vengono gestiti solo i click fatti dal tuo account (`TELEGRAM_CHAT_ID`) nella chat privata col bot; tutto il resto è ignorato.
+- Il bot non può essere aggiunto ai gruppi e il webhook riceve solo i click (`callback_query`), non i messaggi.
+
+### Configurazione
+
+1. Con [@BotFather](https://t.me/BotFather) crea il bot (`/newbot`) e disattiva i gruppi (`/setjoingroups` → *Disable*).
+2. Apri il bot e premi **Avvia**: finché non lo fai, il bot non può scriverti.
+3. Salva i tre secret del Worker:
+   ```bash
+   npx wrangler secret put TELEGRAM_BOT_TOKEN       # token dato da BotFather
+   npx wrangler secret put TELEGRAM_CHAT_ID         # il tuo id utente Telegram
+   npx wrangler secret put TELEGRAM_WEBHOOK_SECRET  # stringa casuale, es. openssl rand -hex 32
+   ```
+   Per lo sviluppo locale metti gli stessi valori in `.dev.vars` (formato `NOME=valore`), già escluso da git.
+4. Configura Access come in [Proteggere l'accesso](#proteggere-laccesso) e pubblica il Worker.
+5. Registra il webhook (una volta sola). Il comando legge token e secret da `.dev.vars` in una subshell, così non restano nel terminale né nella cronologia:
+   ```bash
+   ( set -a; . ./.dev.vars; curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<dominio>/telegram/webhook\",\"secret_token\":\"$TELEGRAM_WEBHOOK_SECRET\",\"allowed_updates\":[\"callback_query\"],\"drop_pending_updates\":true}" ); echo
+   ```
+6. Controlla lo stato del webhook; dopo un click non deve comparire `last_error_message`:
+   ```bash
+   ( set -a; . ./.dev.vars; curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" ); echo
+   ```
 
 ## Modificare il database
 
