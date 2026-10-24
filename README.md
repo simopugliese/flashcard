@@ -107,8 +107,8 @@ L'app è disponibile su <http://localhost:8787>. Il database locale viene salvat
    ```bash
    npx wrangler d1 create flashcard
    ```
-3. Copia il `database_id` restituito in `wrangler.jsonc`, al posto di `"local"`.
-4. Applica le migrazioni al database remoto:
+3. Copia il `database_id` restituito in `wrangler.jsonc`, al posto di `"local"`, poi fai commit e push della modifica. L'ID non è un segreto.
+4. Crea le tabelle nel database remoto:
    ```bash
    npm run db:migrate:remote
    ```
@@ -116,10 +116,21 @@ L'app è disponibile su <http://localhost:8787>. Il database locale viene salvat
    ```bash
    npm run deploy
    ```
+   Se è il tuo primo Worker, Wrangler ti chiede di scegliere un sottodominio `workers.dev`.
 
 Al termine, Wrangler stampa l'indirizzo pubblico `https://flashcard.<tuo-sottodominio>.workers.dev`.
 
-**Attenzione:** l'app non ha autenticazione. Chiunque conosca l'indirizzo pubblico può leggere e modificare i dati. Per limitarne l'accesso puoi usare [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/).
+Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo nel database locale.
+
+### Aggiornamenti successivi
+
+- **Modifiche al codice** (`src/` o `public/`): basta `npm run deploy`.
+- **Modifiche al database:** prima applica le migrazioni, poi pubblica (vedi [Modificare il database](#modificare-il-database)).
+
+### Proteggere l'accesso
+
+L'app non ha autenticazione: chiunque conosca l'indirizzo pubblico può leggere e modificare i dati.
+Per limitarlo, nella dashboard di Cloudflare vai su *Workers & Pages → flashcard → Settings → Domains & Routes* e attiva [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) sul dominio `workers.dev`, consentendo l'accesso solo alla tua email.
 
 ## Modificare il database
 
@@ -128,10 +139,14 @@ Al termine, Wrangler stampa l'indirizzo pubblico `https://flashcard.<tuo-sottodo
    ```bash
    npm run db:generate
    ```
-3. Applicala in locale e poi in remoto:
+3. Applicala in locale e provala con `npm run dev`:
    ```bash
    npm run db:migrate:local
+   ```
+4. Applicala al database remoto **prima** di pubblicare il nuovo codice, poi pubblica:
+   ```bash
    npm run db:migrate:remote
+   npm run deploy
    ```
 
 ## Script disponibili
