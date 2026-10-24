@@ -26,3 +26,8 @@ export const ripasso = sqliteTable("ripasso", {
   media_esito: real().notNull().default(0),
   numero_ripassi: integer().notNull().default(0),
 });
+
+export const invio_telegram = sqliteTable("invio_telegram", {
+  id: integer().primaryKey(),
+  prossimo_invio: integer().notNull(),
+});

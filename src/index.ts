@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { materia, argomento, carta, ripasso } from "./schema";
+import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
+import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
 
-const app = new Hono<{ Bindings: { DB: D1Database } }>();
+const app = new Hono<{ Bindings: Env }>();
 const db = (c: { env: { DB: D1Database } }) => drizzle(c.env.DB);
-const oggi = (giorni = 0) => new Date(Date.now() + giorni * 86400000).toISOString().slice(0, 10);
 
 app.onError((e, c) => c.json({ errore: e.message }, 400));
 
@@ -68,19 +69,7 @@ app.get("/argomenti/:id/carte", async (c) =>
 app.get("/carte/da-ripassare", async (c) => {
   const { materia: idMateria, argomenti } = c.req.query();
   return c.json(
-    await db(c)
-      .select({ carta, ripasso })
-      .from(carta)
-      .innerJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
-      .innerJoin(argomento, eq(argomento.id_argomento, carta.id_argomento))
-      .where(
-        and(
-          lte(ripasso.prossimo_ripasso, oggi()),
-          idMateria ? eq(argomento.id_materia, +idMateria) : undefined,
-          argomenti ? inArray(carta.id_argomento, argomenti.split(",").map(Number)) : undefined,
-        ),
-      )
-      .orderBy(ripasso.prossimo_ripasso, ripasso.media_esito),
+    await carteDaRipassare(db(c), idMateria ? +idMateria : undefined, argomenti ? argomenti.split(",").map(Number) : undefined),
   );
 });
 
@@ -110,20 +99,28 @@ app.delete("/carte/:id", async (c) => {
 });
 
 app.post("/carte/:id/voto", async (c) => {
-  const id = +c.req.param("id");
   const { voto } = await c.req.json();
   if (!Number.isInteger(voto) || voto < 0 || voto > 5) return c.json({ errore: "voto deve essere un intero da 0 a 5" }, 400);
-  const [r] = await db(c).select().from(ripasso).where(eq(ripasso.id_carta, id));
+  const [r] = await db(c).select().from(ripasso).where(eq(ripasso.id_carta, +c.req.param("id")));
   if (!r) return c.notFound();
-  const n = r.numero_ripassi + 1;
-  const media = (r.media_esito * r.numero_ripassi + voto) / n;
-  const giorni = voto < 3 ? 1 : Math.ceil(media * n);
-  const [nuovo] = await db(c)
-    .update(ripasso)
-    .set({ ultimo_ripasso: oggi(), prossimo_ripasso: oggi(giorni), media_esito: media, numero_ripassi: n })
-    .where(eq(ripasso.id_carta, id))
-    .returning();
-  return c.json(nuovo);
+  const nuovo = await registraVoto(db(c), r, voto);
+  return nuovo ? c.json(nuovo) : c.json({ errore: "la carta è stata ripassata nel frattempo, riprova" }, 409);
 });
 
-export default app;
+// Unica rotta esclusa da Cloudflare Access: la protegge il secret che Telegram invia in ogni richiesta.
+// Risponde sempre 200 alle richieste autentiche, altrimenti Telegram le ripeterebbe all'infinito.
+app.post("/telegram/webhook", async (c) => {
+  if (!(await segretoValido(c.req.header("X-Telegram-Bot-Api-Secret-Token"), c.env.TELEGRAM_WEBHOOK_SECRET)))
+    return c.body(null, 401);
+  try {
+    await gestisciUpdate(c.env, await c.req.json());
+  } catch (e) {
+    console.error(e);
+  }
+  return c.body(null, 200);
+});
+
+export default {
+  fetch: app.fetch,
+  scheduled: (_evento, env, ctx) => ctx.waitUntil(invioProgrammato(env)),
+} satisfies ExportedHandler<Env>;
