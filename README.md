@@ -101,7 +101,7 @@ L'app è disponibile su <http://localhost:8787>. Il database locale viene salvat
 
 1. Accedi al tuo account Cloudflare:
    ```bash
-   npx wrangler login
+   npx wrangler login --scopes account:read user:read workers:write workers_scripts:write d1:write
    ```
 2. Crea il database D1:
    ```bash
