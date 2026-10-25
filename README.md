@@ -56,6 +56,16 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
   - con un voto da 3 a 5 torna tra **media × numero_ripassi** giorni (arrotondato per eccesso).
 - Un voto viene registrato solo se nel frattempo la carta non è stata ripassata: un doppio click o un vecchio messaggio Telegram non possono sovrascrivere un ripasso più recente.
 
+### Media di risposta
+
+Nell'elenco di carte e argomenti, accanto a ogni riga, l'app mostra la media dei voti e il numero di ripassi (es. `media 3.5 · 4 ripassi`). Se non c'è ancora nessun ripasso compare *mai ripassata* (carta) o *mai ripassato* (argomento).
+
+- **Carta:** `media_esito` e `numero_ripassi` del suo ripasso, già inclusi in `GET /argomenti/:id/carte`.
+- **Argomento:** `GET /materie/:id/argomenti` aggiunge a ogni argomento due campi calcolati dal database:
+  - `ripassi`: somma dei `numero_ripassi` delle sue carte (0 se non ce ne sono);
+  - `media`: media di **tutti i voti** dati nell'argomento, cioè `Σ(media_esito × numero_ripassi) / Σ(numero_ripassi)`, oppure `null` se `ripassi` è 0.
+- La media è **pesata**: una carta ripassata 10 volte conta 10 volte più di una ripassata una sola. Le carte mai ripassate non influiscono.
+
 ## API
 
 Tutte le richieste e risposte sono in JSON.
@@ -67,14 +77,14 @@ Tutte le richieste e risposte sono in JSON.
 | POST | `/materie` | `{ nome_materia }` | materia creata (201) |
 | PUT | `/materie/:id` | `{ nome_materia }` | materia aggiornata |
 | DELETE | `/materie/:id` | – | 204 |
-| GET | `/materie/:id/argomenti` | – | argomenti della materia |
+| GET | `/materie/:id/argomenti` | – | argomenti della materia, ciascuno con `media` e `ripassi` (vedi [Media di risposta](#media-di-risposta)) |
 | GET | `/argomenti/:id` | – | un argomento |
 | POST | `/argomenti` | `{ nome_argomento, id_materia }` | argomento creato (201) |
 | PUT | `/argomenti/:id` | campi da modificare | argomento aggiornato |
 | DELETE | `/argomenti/:id` | – | 204 |
 | GET | `/argomenti/:id/carte` | – | `[{ carta, ripasso }]` |
 | GET | `/carte/:id` | – | `{ carta, ripasso }` |
-| POST | `/carte` | `{ domanda, risposta, id_argomento, difficolta? }` | `{ carta, ripasso }` (201) |
+| POST | `/carte` | `{ domanda, risposta, id_argomento, opzioni?, difficolta? }` | `{ carta, ripasso }` (201) |
 | PUT | `/carte/:id` | campi da modificare | carta aggiornata |
 | DELETE | `/carte/:id` | – | 204 |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID` | `[{ carta, ripasso }]` in ordine di priorità |
