@@ -32,14 +32,15 @@ app.delete("/materie/:id", async (c) => {
   return c.body(null, 204);
 });
 
-// Media pesata sui ripassi: media_esito * numero_ripassi è la somma dei voti della carta, quindi il rapporto
-// è la media di tutti i voti dati nell'argomento. Le carte mai ripassate pesano 0; senza ripassi la media è null.
+// Media pesata sui ripassi e sulla difficoltà: media_esito * numero_ripassi è la somma dei voti della carta, quindi
+// senza il peso sarebbe la media di tutti i voti dati nell'argomento. Ogni voto pesa quanto la difficoltà della carta.
+// Le carte mai ripassate pesano 0; senza ripassi la media è null.
 app.get("/materie/:id/argomenti", async (c) =>
   c.json(
     await db(c)
       .select({
         ...getTableColumns(argomento),
-        media: sql<number | null>`sum(${ripasso.media_esito} * ${ripasso.numero_ripassi}) * 1.0 / nullif(sum(${ripasso.numero_ripassi}), 0)`,
+        media: sql<number | null>`sum(${ripasso.media_esito} * ${ripasso.numero_ripassi} * ${carta.difficolta}) * 1.0 / nullif(sum(${ripasso.numero_ripassi} * ${carta.difficolta}), 0)`,
         ripassi: sql<number>`coalesce(sum(${ripasso.numero_ripassi}), 0)`,
       })
       .from(argomento)
@@ -115,9 +116,13 @@ app.delete("/carte/:id", async (c) => {
 app.post("/carte/:id/voto", async (c) => {
   const { voto } = await c.req.json();
   if (!Number.isInteger(voto) || voto < 0 || voto > 5) return c.json({ errore: "voto deve essere un intero da 0 a 5" }, 400);
-  const [r] = await db(c).select().from(ripasso).where(eq(ripasso.id_carta, +c.req.param("id")));
-  if (!r) return c.notFound();
-  const nuovo = await registraVoto(db(c), r, voto);
+  const [k] = await db(c)
+    .select({ ripasso, difficolta: carta.difficolta })
+    .from(ripasso)
+    .innerJoin(carta, eq(carta.id_carta, ripasso.id_carta))
+    .where(eq(ripasso.id_carta, +c.req.param("id")));
+  if (!k) return c.notFound();
+  const nuovo = await registraVoto(db(c), k.ripasso, voto, k.difficolta);
   return nuovo ? c.json(nuovo) : c.json({ errore: "la carta è stata ripassata nel frattempo, riprova" }, 409);
 });
 

@@ -48,12 +48,13 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 
 ### Algoritmo di ripasso
 
-- **Carte da ripassare:** quelle con `prossimo_ripasso` ≤ oggi, ordinate per `prossimo_ripasso` crescente e poi per `media_esito` crescente.
+- **Carte da ripassare:** quelle con `prossimo_ripasso` ≤ oggi, ordinate per `prossimo_ripasso` crescente, poi per `difficolta` decrescente (a parità di data le più difficili per prime) e infine per `media_esito` crescente.
 - **Dopo un voto:**
   - `numero_ripassi` aumenta di 1;
   - la media si aggiorna con `(media × n + voto) / (n + 1)`;
   - con un voto da 0 a 2 la carta torna **domani**;
-  - con un voto da 3 a 5 torna tra **media × numero_ripassi** giorni (arrotondato per eccesso).
+  - con un voto da 3 a 5 torna tra **media × numero_ripassi × fattore** giorni (arrotondato per eccesso, minimo 1), dove il fattore dipende dalla difficoltà della carta.
+- **Difficoltà:** va da 1 (molto facile) a 5 (molto difficile); il 3 è neutro. Il fattore dell'intervallo è `1 + (3 − difficoltà) × 0.2`, quindi 1.4 · 1.2 · 1.0 · 0.8 · 0.6: le carte difficili tornano prima, quelle facili più tardi. Il voto da 0 a 2 rimanda sempre a domani, qualunque sia la difficoltà.
 - Un voto viene registrato solo se nel frattempo la carta non è stata ripassata: un doppio click o un vecchio messaggio Telegram non possono sovrascrivere un ripasso più recente.
 
 ### Media di risposta
@@ -63,8 +64,8 @@ Nell'elenco di carte e argomenti, accanto a ogni riga, l'app mostra la media dei
 - **Carta:** `media_esito` e `numero_ripassi` del suo ripasso, già inclusi in `GET /argomenti/:id/carte`.
 - **Argomento:** `GET /materie/:id/argomenti` aggiunge a ogni argomento due campi calcolati dal database:
   - `ripassi`: somma dei `numero_ripassi` delle sue carte (0 se non ce ne sono);
-  - `media`: media di **tutti i voti** dati nell'argomento, cioè `Σ(media_esito × numero_ripassi) / Σ(numero_ripassi)`, oppure `null` se `ripassi` è 0.
-- La media è **pesata**: una carta ripassata 10 volte conta 10 volte più di una ripassata una sola. Le carte mai ripassate non influiscono.
+  - `media`: media dei voti dati nell'argomento pesata per difficoltà (formula qui sotto), oppure `null` se `ripassi` è 0.
+- La media è **pesata** due volte: una carta ripassata 10 volte conta 10 volte più di una ripassata una sola, e ogni voto pesa quanto la **difficoltà** della carta. Quindi `media = Σ(media_esito × numero_ripassi × difficoltà) / Σ(numero_ripassi × difficoltà)`: i voti sulle carte difficili contano di più di quelli sulle carte facili. Le carte mai ripassate non influiscono; `ripassi` resta il numero semplice di ripassi.
 
 ## API
 
@@ -162,7 +163,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<dominio>/telegram/webh
 
 ## Bot Telegram
 
-Tra le **9 e le 22** (ora italiana), a distanza casuale tra **1 e 3 ore**, il bot invia una carta scelta a caso tra quelle da ripassare. Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Se la carta ha delle `opzioni` (risposte sbagliate), diventa a scelta multipla: la domanda arriva con le opzioni A, B, C… mescolate e al posto di *Vedi risposta* ci sono i bottoni con le lettere; dopo la scelta il messaggio segna quella giusta (✅) e quella sbagliata (❌) e mostra i bottoni **0–5**. Il voto resta sempre manuale. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
+Tra le **9 e le 22** (ora italiana), a distanza casuale tra **1 e 3 ore**, il bot invia una carta scelta a caso tra quelle da ripassare, con probabilità proporzionale alla difficoltà (una carta di difficoltà 5 esce cinque volte più spesso di una di difficoltà 1). Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Se la carta ha delle `opzioni` (risposte sbagliate), diventa a scelta multipla: la domanda arriva con le opzioni A, B, C… mescolate e al posto di *Vedi risposta* ci sono i bottoni con le lettere; dopo la scelta il messaggio segna quella giusta (✅) e quella sbagliata (❌) e mostra i bottoni **0–5**. Il voto resta sempre manuale. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
 
 Funzionamento:
 - il cron gira ogni 10 minuti e invia solo quando è passato l'orario salvato in `invio_telegram.prossimo_invio`, poi ne sceglie uno nuovo;

@@ -1,5 +1,5 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import { argomento, carta, ripasso } from "./schema";
 
 type Db = DrizzleD1Database;
@@ -20,14 +20,16 @@ export const carteDaRipassare = (d: Db, idMateria?: number, argomenti?: number[]
         argomenti ? inArray(carta.id_argomento, argomenti) : undefined,
       ),
     )
-    .orderBy(ripasso.prossimo_ripasso, ripasso.media_esito);
+    .orderBy(ripasso.prossimo_ripasso, desc(carta.difficolta), ripasso.media_esito);
 
 // Aggiorna il ripasso solo se nel frattempo nessun altro voto l'ha modificato:
 // restituisce undefined se il voto arriva tardi (doppio click, carta già ripassata altrove).
-export const registraVoto = async (d: Db, r: Ripasso, voto: number) => {
+export const registraVoto = async (d: Db, r: Ripasso, voto: number, difficolta: number) => {
   const n = r.numero_ripassi + 1;
   const media = (r.media_esito * r.numero_ripassi + voto) / n;
-  const giorni = voto < 3 ? 1 : Math.ceil(media * n);
+  // La difficoltà 3 è neutra: ogni punto in meno allunga l'intervallo del 20%, ogni punto in più lo accorcia.
+  const fattore = 1 + (3 - difficolta) * 0.2;
+  const giorni = voto < 3 ? 1 : Math.max(1, Math.ceil(media * n * fattore));
   const [nuovo] = await d
     .update(ripasso)
     .set({ ultimo_ripasso: oggi(), prossimo_ripasso: oggi(giorni), media_esito: media, numero_ripassi: n })

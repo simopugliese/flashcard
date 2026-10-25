@@ -126,7 +126,10 @@ export const invioProgrammato = async (env: Env) => {
   if (ora < ORA_INIZIO || ora >= ORA_FINE) return;
   const carte = await carteDaRipassare(d);
   if (!carte.length) return;
-  const k = await leggiCarta(d, carte[Math.floor(Math.random() * carte.length)].carta.id_carta);
+  // Scelta casuale pesata: una carta di difficoltà 5 ha 5 volte la probabilità di una di difficoltà 1.
+  let estratto = Math.random() * carte.reduce((somma, { carta }) => somma + carta.difficolta, 0);
+  const scelta = carte.find(({ carta }) => (estratto -= carta.difficolta) < 0) ?? carte[carte.length - 1];
+  const k = await leggiCarta(d, scelta.carta.id_carta);
   if (k) await inviaCarta(env, k);
 };
 
@@ -166,7 +169,7 @@ const gestisciClick = async (env: Env, dati: string, msg: Messaggio) => {
     ]);
     return scelta === undefined ? "" : opzioni[scelta] === k.carta.risposta ? "Giusto! ✅" : "Sbagliato ❌";
   }
-  const nuovo = await registraVoto(d, k.ripasso, +x);
+  const nuovo = await registraVoto(d, k.ripasso, +x, k.carta.difficolta);
   if (!nuovo) return giàRipassata();
   await modifica(`${testoRisposta(k)}\n\nVoto <b>${x}</b> · prossimo ripasso <b>${data(nuovo.prossimo_ripasso)}</b>`);
   return `Voto ${x} registrato`;
