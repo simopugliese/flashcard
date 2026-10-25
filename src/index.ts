@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns, sql } from "drizzle-orm";
 import { materia, argomento, carta, ripasso } from "./schema";
 import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
@@ -32,8 +32,22 @@ app.delete("/materie/:id", async (c) => {
   return c.body(null, 204);
 });
 
+// Media pesata sui ripassi: media_esito * numero_ripassi è la somma dei voti della carta, quindi il rapporto
+// è la media di tutti i voti dati nell'argomento. Le carte mai ripassate pesano 0; senza ripassi la media è null.
 app.get("/materie/:id/argomenti", async (c) =>
-  c.json(await db(c).select().from(argomento).where(eq(argomento.id_materia, +c.req.param("id")))),
+  c.json(
+    await db(c)
+      .select({
+        ...getTableColumns(argomento),
+        media: sql<number | null>`sum(${ripasso.media_esito} * ${ripasso.numero_ripassi}) * 1.0 / nullif(sum(${ripasso.numero_ripassi}), 0)`,
+        ripassi: sql<number>`coalesce(sum(${ripasso.numero_ripassi}), 0)`,
+      })
+      .from(argomento)
+      .leftJoin(carta, eq(carta.id_argomento, argomento.id_argomento))
+      .leftJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
+      .where(eq(argomento.id_materia, +c.req.param("id")))
+      .groupBy(argomento.id_argomento),
+  ),
 );
 
 app.get("/argomenti/:id", async (c) => {

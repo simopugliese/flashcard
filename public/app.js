@@ -85,13 +85,18 @@ async function elenco(id, percorso, disegna, vuoto, etichetta, crea) {
   }
 }
 
-function riga(testo, apri, modifica, elimina) {
+function riga(testo, apri, modifica, elimina, nota = "") {
   const elemento = $("modello-riga").content.firstElementChild.cloneNode(true);
   elemento.querySelector(".apri").textContent = testo;
+  elemento.querySelector(".nota").textContent = nota;
   elemento.querySelector(".apri").onclick = apri;
   elemento.querySelector(".modifica").onclick = modifica;
   elemento.querySelector(".elimina").onclick = elimina;
   return elemento;
+}
+
+function statistiche(media, ripassi, mai) {
+  return ripassi ? `media ${media.toFixed(1)} · ${ripassi} ${ripassi === 1 ? "ripasso" : "ripassi"}` : mai;
 }
 
 function mostra(id) {
@@ -154,7 +159,14 @@ function caricaArgomenti() {
   elenco(
     "lista-argomenti",
     `/materie/${stato.materia.id_materia}/argomenti`,
-    (a) => riga(a.nome_argomento, () => apriArgomento(a), () => modificaArgomento(a), () => eliminaArgomento(a)),
+    (a) =>
+      riga(
+        a.nome_argomento,
+        () => apriArgomento(a),
+        () => modificaArgomento(a),
+        () => eliminaArgomento(a),
+        statistiche(a.media, a.ripassi, "mai ripassato"),
+      ),
     "Non ci sono ancora argomenti in questa materia.",
     "Crea il primo argomento",
     nuovoArgomento,
@@ -197,7 +209,14 @@ function caricaCarte() {
   elenco(
     "lista-carte",
     `/argomenti/${stato.argomento.id_argomento}/carte`,
-    ({ carta }) => riga(carta.domanda, () => modificaCarta(carta), () => modificaCarta(carta), () => eliminaCarta(carta)),
+    ({ carta, ripasso }) =>
+      riga(
+        carta.domanda,
+        () => modificaCarta(carta),
+        () => modificaCarta(carta),
+        () => eliminaCarta(carta),
+        statistiche(ripasso.media_esito, ripasso.numero_ripassi, "mai ripassata"),
+      ),
     "Non hai ancora carte in questo argomento.",
     "Crea la prima carta",
     nuovaCarta,
