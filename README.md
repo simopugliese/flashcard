@@ -38,7 +38,7 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 |---|---|
 | `materia` | `id_materia`, `nome_materia` |
 | `argomento` | `id_argomento`, `nome_argomento`, `id_materia` |
-| `carta` | `id_carta`, `domanda`, `risposta`, `difficolta` (default 1), `id_argomento` |
+| `carta` | `id_carta`, `domanda`, `risposta`, `opzioni` (JSON, facoltativo), `difficolta` (default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
 | `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
@@ -152,7 +152,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<dominio>/telegram/webh
 
 ## Bot Telegram
 
-Tra le **9 e le 22** (ora italiana), a distanza casuale tra **1 e 3 ore**, il bot invia una carta scelta a caso tra quelle da ripassare. Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
+Tra le **9 e le 22** (ora italiana), a distanza casuale tra **1 e 3 ore**, il bot invia una carta scelta a caso tra quelle da ripassare. Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Se la carta ha delle `opzioni` (risposte sbagliate), diventa a scelta multipla: la domanda arriva con le opzioni A, B, C… mescolate e al posto di *Vedi risposta* ci sono i bottoni con le lettere; dopo la scelta il messaggio segna quella giusta (✅) e quella sbagliata (❌) e mostra i bottoni **0–5**. Il voto resta sempre manuale. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
 
 Funzionamento:
 - il cron gira ogni 10 minuti e invia solo quando è passato l'orario salvato in `invio_telegram.prossimo_invio`, poi ne sceglie uno nuovo;

@@ -204,9 +204,15 @@ function caricaCarte() {
   );
 }
 
+// Le opzioni sbagliate arrivano come testo (una per riga) e partono come array, o null se assenti.
+function datiCarta(dati) {
+  const opzioni = dati.opzioni.split("\n").map((o) => o.trim()).filter(Boolean).slice(0, 9);
+  return { ...dati, difficolta: +dati.difficolta, opzioni: opzioni.length ? opzioni : null };
+}
+
 function nuovaCarta() {
   apriModale("modale-carta", "Nuova carta", {}, async (dati) => {
-    await api("/carte", "POST", { ...dati, difficolta: +dati.difficolta, id_argomento: stato.argomento.id_argomento });
+    await api("/carte", "POST", { ...datiCarta(dati), id_argomento: stato.argomento.id_argomento });
     avviso("Carta creata.", "success");
     caricaCarte();
   });
@@ -214,8 +220,9 @@ function nuovaCarta() {
 
 function modificaCarta(carta) {
   const { domanda, risposta, difficolta } = carta;
-  apriModale("modale-carta", "Modifica carta", { domanda, risposta, difficolta }, async (dati) => {
-    await api(`/carte/${carta.id_carta}`, "PUT", { ...dati, difficolta: +dati.difficolta });
+  const opzioni = (carta.opzioni ?? []).join("\n");
+  apriModale("modale-carta", "Modifica carta", { domanda, risposta, opzioni, difficolta }, async (dati) => {
+    await api(`/carte/${carta.id_carta}`, "PUT", datiCarta(dati));
     avviso("Carta modificata.", "success");
     caricaCarte();
   });
@@ -290,9 +297,36 @@ function mostraCarta() {
   $("risposta").textContent = carta.risposta;
   $("blocco-risposta").classList.add("d-none");
   $("voti").classList.add("d-none");
-  $("mostra-risposta").classList.remove("d-none");
   $("avviso-voto").innerHTML = "";
+  const quiz = carta.opzioni?.length;
+  $("mostra-risposta").classList.toggle("d-none", !!quiz);
+  $("opzioni").classList.toggle("d-none", !quiz);
+  $("opzioni").replaceChildren(...(quiz ? opzioniMescolate(carta).map((testo) => bottoneOpzione(carta, testo)) : []));
   window.scrollTo(0, 0);
+}
+
+function opzioniMescolate(carta) {
+  const tutte = [carta.risposta, ...carta.opzioni];
+  for (let i = tutte.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tutte[i], tutte[j]] = [tutte[j], tutte[i]];
+  }
+  return tutte;
+}
+
+function bottoneOpzione(carta, testo) {
+  const b = document.createElement("button");
+  b.className = "btn btn-outline-secondary text-start testo-carta";
+  b.textContent = testo;
+  b.onclick = () => {
+    const bottoni = [...$("opzioni").children];
+    bottoni.forEach((x) => (x.disabled = true));
+    const colora = (x, classe) => x.classList.replace("btn-outline-secondary", classe);
+    bottoni.filter((x) => x.textContent === carta.risposta).forEach((x) => colora(x, "btn-success"));
+    if (testo !== carta.risposta) colora(b, "btn-danger");
+    mostraRisposta();
+  };
+  return b;
 }
 
 function mostraRisposta() {

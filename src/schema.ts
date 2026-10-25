@@ -15,6 +15,8 @@ export const carta = sqliteTable("carta", {
   id_carta: integer().primaryKey({ autoIncrement: true }),
   domanda: text().notNull(),
   risposta: text().notNull(),
+  // Opzioni sbagliate: se presenti la carta è a scelta multipla (la risposta corretta resta in `risposta`).
+  opzioni: text({ mode: "json" }).$type<string[]>(),
   difficolta: integer().notNull().default(1),
   id_argomento: integer().notNull().references(() => argomento.id_argomento, { onDelete: "cascade" }),
 });

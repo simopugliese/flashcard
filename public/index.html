@@ -77,6 +77,7 @@
           </div>
         </div>
       </div>
+      <div id="opzioni" class="d-grid gap-2 mt-3 d-none"></div>
       <button class="btn btn-primary btn-lg w-100 mt-3" id="mostra-risposta" onclick="mostraRisposta()">Mostra risposta</button>
       <fieldset id="voti" class="d-none mt-4">
         <legend class="fs-6 text-center mb-2">Quanto bene la ricordavi?</legend>
@@ -141,6 +142,11 @@
             <label class="form-label" for="campo-risposta">Risposta</label>
             <textarea class="form-control" id="campo-risposta" name="risposta" rows="3" required></textarea>
             <div class="invalid-feedback">Inserisci la risposta.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="campo-opzioni">Opzioni sbagliate <span class="text-body-secondary">(facoltativo)</span></label>
+            <textarea class="form-control" id="campo-opzioni" name="opzioni" rows="3"></textarea>
+            <div class="form-text">Una per riga, massimo 9. Se le inserisci, nel ripasso la carta diventa a scelta multipla.</div>
           </div>
           <label class="form-label" for="campo-difficolta">Difficoltà</label>
           <select class="form-select" id="campo-difficolta" name="difficolta">

@@ -54,20 +54,58 @@ const leggiCarta = async (d: DrizzleD1Database, id: number) => {
 };
 type CartaCompleta = NonNullable<Awaited<ReturnType<typeof leggiCarta>>>;
 
-const testoDomanda = (k: CartaCompleta) =>
-  `<i>${breve(k.nome_materia, 100)} · ${breve(k.nome_argomento, 100)}</i>\n\n<b>Domanda</b>\n${breve(k.carta.domanda, 1800)}`;
-const testoRisposta = (k: CartaCompleta) => `${testoDomanda(k)}\n\n<b>Risposta</b>\n${breve(k.carta.risposta, 1800)}`;
+const LETTERE = "ABCDEFGHIJ";
+
+// Ordine delle opzioni stabile per carta e ripasso (mulberry32): il messaggio e il click calcolano lo stesso ordine.
+const opzioniMescolate = (k: CartaCompleta) => {
+  const tutte = [k.carta.risposta, ...(k.carta.opzioni ?? [])].slice(0, LETTERE.length);
+  let seme = (k.carta.id_carta * 100003 + k.ripasso.numero_ripassi) >>> 0;
+  const casuale = () => {
+    seme = (seme + 0x6d2b79f5) >>> 0;
+    let t = seme;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = tutte.length - 1; i > 0; i--) {
+    const j = Math.floor(casuale() * (i + 1));
+    [tutte[i], tutte[j]] = [tutte[j], tutte[i]];
+  }
+  return tutte;
+};
+const èQuiz = (k: CartaCompleta) => !!k.carta.opzioni?.length;
+
+const intestazione = (k: CartaCompleta) =>
+  `<i>${breve(k.nome_materia, 100)} · ${breve(k.nome_argomento, 100)}</i>\n\n<b>Domanda</b>\n${breve(k.carta.domanda, 1500)}`;
+
+// Con `scelta` (indice scelto) le opzioni vengono corrette: ✅ giusta, ❌ scelta sbagliata.
+const elencoOpzioni = (k: CartaCompleta, scelta?: number) =>
+  opzioniMescolate(k)
+    .map((o, i) => {
+      const segno = scelta === undefined ? "" : o === k.carta.risposta ? "✅ " : i === scelta ? "❌ " : "";
+      return `${segno}<b>${LETTERE[i]}</b>) ${breve(o, 120)}`;
+    })
+    .join("\n");
+
+const testoDomanda = (k: CartaCompleta) => (èQuiz(k) ? `${intestazione(k)}\n\n${elencoOpzioni(k)}` : intestazione(k));
+const testoRisposta = (k: CartaCompleta, scelta?: number) =>
+  èQuiz(k)
+    ? `${intestazione(k)}\n\n${elencoOpzioni(k, scelta)}\n\n<b>Risposta</b>\n${breve(k.carta.risposta, 1000)}`
+    : `${intestazione(k)}\n\n<b>Risposta</b>\n${breve(k.carta.risposta, 1800)}`;
 
 // numero_ripassi viaggia nei bottoni: un click su un messaggio vecchio non può sovrascrivere un ripasso più recente.
-const inviaCarta = (env: Env, k: CartaCompleta) =>
-  tg(env, "sendMessage", {
+const inviaCarta = (env: Env, k: CartaCompleta) => {
+  const base = `${k.carta.id_carta}:${k.ripasso.numero_ripassi}`;
+  const bottoni = èQuiz(k)
+    ? opzioniMescolate(k).map((_, i) => ({ text: LETTERE[i], callback_data: `q:${base}:${i}` }))
+    : [{ text: "Vedi risposta", callback_data: `m:${base}` }];
+  return tg(env, "sendMessage", {
     chat_id: env.TELEGRAM_CHAT_ID,
     text: testoDomanda(k),
     parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [[{ text: "Vedi risposta", callback_data: `m:${k.carta.id_carta}:${k.ripasso.numero_ripassi}` }]],
-    },
+    reply_markup: { inline_keyboard: [bottoni] },
   });
+};
 
 const oraItaliana = (t: number) =>
   Number(new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "numeric", hourCycle: "h23" }).format(t));
@@ -103,8 +141,10 @@ const gestisciClick = async (env: Env, dati: string, msg: Messaggio) => {
       reply_markup: { inline_keyboard },
     });
 
-  const [, id, n, voto] = /^m:(\d{1,9}):(\d{1,9})$/.exec(dati) ?? /^v:(\d{1,9}):(\d{1,9}):([0-5])$/.exec(dati) ?? [];
+  // m:id:n = vedi risposta · q:id:n:i = opzione scelta (indice) · v:id:n:voto
+  const [, tipo, id, n, x] = /^([mqv]):(\d{1,9}):(\d{1,9})(?::(\d))?$/.exec(dati) ?? [];
   if (!id) return "";
+  if ((tipo === "m") !== (x === undefined) || (tipo === "v" && +x > 5)) return "";
 
   const d = drizzle(env.DB);
   const k = await leggiCarta(d, +id);
@@ -117,16 +157,19 @@ const gestisciClick = async (env: Env, dati: string, msg: Messaggio) => {
     return "Carta già ripassata";
   };
   if (k.ripasso.numero_ripassi !== +n) return giàRipassata();
-  if (voto === undefined) {
-    await modifica(testoRisposta(k), [
+  if (tipo !== "v") {
+    const opzioni = opzioniMescolate(k);
+    if (tipo === "q" && (!èQuiz(k) || +x >= opzioni.length)) return "";
+    const scelta = tipo === "q" ? +x : undefined;
+    await modifica(testoRisposta(k, scelta), [
       [0, 1, 2, 3, 4, 5].map((v) => ({ text: String(v), callback_data: `v:${id}:${n}:${v}` })),
     ]);
-    return "";
+    return scelta === undefined ? "" : opzioni[scelta] === k.carta.risposta ? "Giusto! ✅" : "Sbagliato ❌";
   }
-  const nuovo = await registraVoto(d, k.ripasso, +voto);
+  const nuovo = await registraVoto(d, k.ripasso, +x);
   if (!nuovo) return giàRipassata();
-  await modifica(`${testoRisposta(k)}\n\nVoto <b>${voto}</b> · prossimo ripasso <b>${data(nuovo.prossimo_ripasso)}</b>`);
-  return `Voto ${voto} registrato`;
+  await modifica(`${testoRisposta(k)}\n\nVoto <b>${x}</b> · prossimo ripasso <b>${data(nuovo.prossimo_ripasso)}</b>`);
+  return `Voto ${x} registrato`;
 };
 
 // Accetta solo i click fatti da te, nella tua chat privata col bot.
