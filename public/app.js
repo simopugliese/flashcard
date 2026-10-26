@@ -16,7 +16,11 @@ async function api(percorso, metodo = "GET", dati) {
     throw new Error("Impossibile contattare il server. Controlla la connessione e riprova.");
   }
   if (res.status === 404) throw new Error("Elemento non trovato: potrebbe essere stato eliminato.");
-  if (!res.ok) throw new Error("Operazione non riuscita. Controlla i dati e riprova.");
+  if (res.status >= 500) throw new Error("Errore del server, riprova tra poco.");
+  if (!res.ok) {
+    const errore = await res.json().then((j) => j?.errore, () => null);
+    throw new Error(errore ? `Operazione non riuscita: ${errore}.` : "Operazione non riuscita. Controlla i dati e riprova.");
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -111,8 +115,10 @@ function mostra(id) {
 }
 
 // La vista a card usa tutta la larghezza disponibile; le altre schermate restano strette per la leggibilità.
+// Vale anche per la navbar, così il logo resta allineato al contenuto.
 function adattaLarghezza(schermata) {
-  $("principale").classList.toggle("contenuto-largo", schermata === "argomento" && vistaCarte() === "card");
+  const largo = schermata === "argomento" && vistaCarte() === "card";
+  document.querySelectorAll(".contenuto").forEach((el) => el.classList.toggle("contenuto-largo", largo));
 }
 
 function vaiHome() {

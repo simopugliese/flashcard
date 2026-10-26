@@ -5,7 +5,13 @@ import { argomento, carta, ripasso } from "./schema";
 type Db = DrizzleD1Database;
 type Ripasso = typeof ripasso.$inferSelect;
 
-export const oggi = (giorni = 0) => new Date(Date.now() + giorni * 86400000).toISOString().slice(0, 10);
+// Date in ora italiana (YYYY-MM-DD). Si sommano giorni di calendario, quindi il cambio dell'ora legale non conta.
+const giornoRoma = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" });
+export const oggi = (giorni = 0) => {
+  const d = new Date(giornoRoma.format(Date.now())); // mezzanotte UTC del giorno italiano
+  d.setUTCDate(d.getUTCDate() + giorni);
+  return d.toISOString().slice(0, 10);
+};
 
 export const carteDaRipassare = (d: Db, idMateria?: number, argomenti?: number[]) =>
   d

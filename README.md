@@ -56,6 +56,7 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
   - con un voto da 3 a 5 torna tra **media × numero_ripassi × fattore** giorni (arrotondato per eccesso, minimo 1), dove il fattore dipende dalla difficoltà della carta.
 - **Difficoltà:** va da 1 (molto facile) a 5 (molto difficile); il 3 è neutro. Il fattore dell'intervallo è `1 + (3 − difficoltà) × 0.2`, quindi 1.4 · 1.2 · 1.0 · 0.8 · 0.6: le carte difficili tornano prima, quelle facili più tardi. Il voto da 0 a 2 rimanda sempre a domani, qualunque sia la difficoltà.
 - Un voto viene registrato solo se nel frattempo la carta non è stata ripassata: un doppio click o un vecchio messaggio Telegram non possono sovrascrivere un ripasso più recente.
+- Le date (`oggi`, `ultimo_ripasso`, `prossimo_ripasso`) sono in **ora italiana**: un voto dato a mezzanotte e mezza conta per il nuovo giorno.
 
 ### Media di risposta
 
@@ -94,21 +95,24 @@ Tutte le richieste e risposte sono in JSON.
 | GET | `/materie/:id/carte` | – | tutte le carte della materia, ciascuna con `nome_argomento` (usata dalla [Ricerca](#ricerca)) |
 | GET | `/argomenti/:id` | – | un argomento |
 | POST | `/argomenti` | `{ nome_argomento, id_materia }` | argomento creato (201) |
-| PUT | `/argomenti/:id` | campi da modificare | argomento aggiornato |
+| PUT | `/argomenti/:id` | `{ nome_argomento }` | argomento aggiornato |
 | DELETE | `/argomenti/:id` | – | 204 |
 | GET | `/argomenti/:id/carte` | – | `[{ carta, ripasso }]` |
 | GET | `/carte/:id` | – | `{ carta, ripasso }` |
 | POST | `/carte` | `{ domanda, risposta, id_argomento, opzioni?, difficolta? }` | `{ carta, ripasso }` (201) |
-| PUT | `/carte/:id` | campi da modificare | carta aggiornata |
+| PUT | `/carte/:id` | almeno uno tra `domanda`, `risposta`, `opzioni`, `difficolta` | carta aggiornata |
 | DELETE | `/carte/:id` | – | 204 |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
 | POST | `/telegram/webhook` | update di Telegram | 200 (401 senza il secret corretto) |
 
+Validazione dei body: si accettano solo i campi elencati (un campo in più, anche solo scritto male, dà 400). `nome_materia` e `nome_argomento` sono testi non vuoti fino a 100 caratteri, `domanda` e `risposta` fino a 5000; `opzioni` è `null` o un elenco di al massimo 9 testi; `difficolta` è un intero da 1 a 5 (3 se omessa). Gli spazi iniziali e finali vengono tolti. In modifica non si possono cambiare `id_materia` e `id_argomento`.
+
 Errori:
-- `400` con `{ "errore": "messaggio" }`: dati non validi o riferimenti inesistenti;
+- `400` con `{ "errore": "messaggio" }`: dati non validi, id non numerico, JSON malformato o riferimenti inesistenti;
 - `404` (testo semplice): risorsa non trovata;
-- `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto.
+- `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto;
+- `500` con `{ "errore": "errore interno" }`: errore imprevisto, il dettaglio finisce nei log del Worker.
 
 Esempio:
 
