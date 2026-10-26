@@ -9,7 +9,59 @@
   <style>
     .contenuto { max-width: 720px; }
     .testo-carta { white-space: pre-wrap; }
-    .navbar-verde { background-color: #1F9D6B; }
+    /* Palette dal logo: verde, arancione, crema, menta */
+    :root {
+      --bs-primary: #1EA06D;
+      --bs-primary-rgb: 30, 160, 109;
+      --bs-link-color: #188559;
+      --bs-link-color-rgb: 24, 133, 89;
+      --bs-link-hover-color: #136b47;
+      --bs-link-hover-color-rgb: 19, 107, 71;
+      --bs-warning: #F48330;
+      --bs-warning-rgb: 244, 131, 48;
+      --bs-success: #157347;
+      --bs-success-rgb: 21, 115, 71;
+      --bs-body-bg: #FCF9F2;
+      --bs-body-bg-rgb: 252, 249, 242;
+      --bs-tertiary-bg: #E1EDE1;
+      --bs-tertiary-bg-rgb: 225, 237, 225;
+      --bs-focus-ring-color: rgba(30, 160, 109, .25);
+    }
+    .btn-primary {
+      --bs-btn-bg: #1EA06D;
+      --bs-btn-border-color: #1EA06D;
+      --bs-btn-hover-bg: #188559;
+      --bs-btn-hover-border-color: #188559;
+      --bs-btn-active-bg: #136b47;
+      --bs-btn-active-border-color: #136b47;
+      --bs-btn-disabled-bg: #1EA06D;
+      --bs-btn-disabled-border-color: #1EA06D;
+      --bs-btn-focus-shadow-rgb: 30, 160, 109;
+    }
+    .btn-outline-primary {
+      --bs-btn-color: #188559;
+      --bs-btn-border-color: #1EA06D;
+      --bs-btn-hover-bg: #1EA06D;
+      --bs-btn-hover-border-color: #1EA06D;
+      --bs-btn-active-bg: #188559;
+      --bs-btn-active-border-color: #188559;
+      --bs-btn-disabled-color: #1EA06D;
+      --bs-btn-disabled-border-color: #1EA06D;
+      --bs-btn-focus-shadow-rgb: 30, 160, 109;
+    }
+    .btn-outline-warning {
+      --bs-btn-color: #C9600F;
+      --bs-btn-border-color: #F48330;
+      --bs-btn-hover-color: #fff;
+      --bs-btn-hover-bg: #F48330;
+      --bs-btn-hover-border-color: #F48330;
+      --bs-btn-active-color: #fff;
+      --bs-btn-active-bg: #E0701F;
+      --bs-btn-active-border-color: #E0701F;
+      --bs-btn-focus-shadow-rgb: 244, 131, 48;
+    }
+    .navbar-verde { background-color: var(--bs-primary); }
+    .navbar-verde img { background: #FCF9F2; padding: 1px; }
   </style>
 </head>
 <body class="bg-body-tertiary">
@@ -100,7 +152,7 @@
         <div class="row row-cols-3 row-cols-sm-6 g-2">
           <div class="col"><button class="btn btn-outline-danger w-100 h-100" onclick="vota(0)"><span class="d-block fs-4 fw-semibold">0</span><small>Non la sapevo</small></button></div>
           <div class="col"><button class="btn btn-outline-danger w-100 h-100" onclick="vota(1)"><span class="d-block fs-4 fw-semibold">1</span><small>Sbagliata</small></button></div>
-          <div class="col"><button class="btn btn-outline-warning text-warning-emphasis w-100 h-100" onclick="vota(2)"><span class="d-block fs-4 fw-semibold">2</span><small>Quasi giusta</small></button></div>
+          <div class="col"><button class="btn btn-outline-warning w-100 h-100" onclick="vota(2)"><span class="d-block fs-4 fw-semibold">2</span><small>Quasi giusta</small></button></div>
           <div class="col"><button class="btn btn-outline-primary w-100 h-100" onclick="vota(3)"><span class="d-block fs-4 fw-semibold">3</span><small>Con fatica</small></button></div>
           <div class="col"><button class="btn btn-outline-success w-100 h-100" onclick="vota(4)"><span class="d-block fs-4 fw-semibold">4</span><small>Bene</small></button></div>
           <div class="col"><button class="btn btn-outline-success w-100 h-100" onclick="vota(5)"><span class="d-block fs-4 fw-semibold">5</span><small>Perfetta</small></button></div>
