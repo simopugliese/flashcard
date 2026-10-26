@@ -74,6 +74,78 @@ export const leggiModificaCarta = (corpo: unknown) => {
   };
 };
 
+export const MODI_RIPASSO = ["scadenza", "anticipo", "tutte"] as const;
+export type FiltroRipasso = {
+  idMateria?: number;
+  argomenti?: number[];
+  modo: (typeof MODI_RIPASSO)[number];
+  casuale: boolean;
+  limite?: number;
+};
+
+const numeroQuery = (v: string, nome: string, min: number, max: number) =>
+  /^\d{1,15}$/.test(v) ? intero(Number(v), nome, min, max) : errore(`${nome} deve essere un intero da ${min} a ${max}`);
+
+// Parametri della query di /carte/da-ripassare (tutti opzionali).
+export const leggiFiltroRipasso = (q: Record<string, string>): FiltroRipasso => {
+  const modo = q.modo ?? "scadenza";
+  if (!(MODI_RIPASSO as readonly string[]).includes(modo)) return errore(`modo deve essere uno tra: ${MODI_RIPASSO.join(", ")}`);
+  if (q.casuale !== undefined && !["0", "1"].includes(q.casuale)) return errore("casuale deve essere 0 o 1");
+  const argomenti = q.argomenti === undefined ? undefined : q.argomenti.split(",").map((v) => numeroQuery(v, "argomenti", 1, Number.MAX_SAFE_INTEGER));
+  return {
+    idMateria: q.materia === undefined ? undefined : numeroQuery(q.materia, "materia", 1, Number.MAX_SAFE_INTEGER),
+    argomenti,
+    modo: modo as FiltroRipasso["modo"],
+    casuale: q.casuale === "1",
+    limite: q.limite === undefined ? undefined : numeroQuery(q.limite, "limite", 1, 500),
+  };
+};
+
+export const MAX_CARTE_IMPORT = 5000;
+const dataIso = (v: unknown, nome: string) =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : errore(`${nome} deve essere una data AAAA-MM-GG`);
+
+const elenco = (v: unknown, nome: string, max: number) =>
+  Array.isArray(v) && v.length <= max ? (v as unknown[]) : errore(`${nome} deve essere un elenco di al massimo ${max} elementi`);
+
+// Archivio esportato da GET /esporta (versione 1). Convalida tutto prima di scrivere qualsiasi cosa.
+export const leggiImportazione = (corpo: unknown) => {
+  const o = oggetto(corpo, ["versione", "materie"]);
+  if (o.versione !== 1) return errore("versione non supportata");
+  let carte = 0;
+  const materie = elenco(o.materie, "materie", 1000).map((m) => {
+    const mo = oggetto(m, ["nome_materia", "argomenti"]);
+    return {
+      nome_materia: testo(mo.nome_materia, "nome_materia", 100),
+      argomenti: elenco(mo.argomenti, "argomenti", 1000).map((a) => {
+        const ao = oggetto(a, ["nome_argomento", "carte"]);
+        return {
+          nome_argomento: testo(ao.nome_argomento, "nome_argomento", 100),
+          carte: elenco(ao.carte, "carte", MAX_CARTE_IMPORT).map((k) => {
+            if (++carte > MAX_CARTE_IMPORT) return errore(`al massimo ${MAX_CARTE_IMPORT} carte per importazione`);
+            const ko = oggetto(k, ["domanda", "risposta", "opzioni", "difficolta", "ripasso"]);
+            const ro = oggetto(ko.ripasso, ["ultimo_ripasso", "prossimo_ripasso", "media_esito", "numero_ripassi"]);
+            const media = ro.media_esito;
+            return {
+              domanda: testo(ko.domanda, "domanda", 5000),
+              risposta: testo(ko.risposta, "risposta", 5000),
+              opzioni: se(ko.opzioni, opzioni) ?? null,
+              difficolta: difficolta(ko.difficolta),
+              ripasso: {
+                ultimo_ripasso: ro.ultimo_ripasso === null ? null : dataIso(ro.ultimo_ripasso, "ultimo_ripasso"),
+                prossimo_ripasso: dataIso(ro.prossimo_ripasso, "prossimo_ripasso"),
+                media_esito: typeof media === "number" && media >= 0 && media <= 5 ? media : errore("media_esito deve essere un numero da 0 a 5"),
+                numero_ripassi: intero(ro.numero_ripassi, "numero_ripassi", 0, 1_000_000),
+              },
+            };
+          }),
+        };
+      }),
+    };
+  });
+  return { materie };
+};
+
 export const leggiVoto = (corpo: unknown) => intero(oggetto(corpo, ["voto"]).voto, "voto", 0, 5);
 
 export const inesistente = (nome: string) => errore(`${nome} inesistente`);

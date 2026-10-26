@@ -102,8 +102,10 @@ Tutte le richieste e risposte sono in JSON.
 | POST | `/carte` | `{ domanda, risposta, id_argomento, opzioni?, difficolta? }` | `{ carta, ripasso }` (201) |
 | PUT | `/carte/:id` | almeno uno tra `domanda`, `risposta`, `opzioni`, `difficolta` | carta aggiornata |
 | DELETE | `/carte/:id` | – | 204 |
-| GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID` | `[{ carta, ripasso }]` in ordine di priorità |
+| GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID`, `modo=scadenza\|anticipo\|tutte` (default `scadenza`), `casuale=0\|1`, `limite=1..500` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
+| GET | `/esporta` | — | archivio JSON (`versione: 1`, materie → argomenti → carte con dati di ripasso), scaricabile |
+| POST | `/importa` | archivio JSON nel formato di `/esporta`; `?azzera=1` riporta i ripassi a zero | `{ materie, argomenti, carte }` creati. Aggiunge sempre record nuovi (max 5000 carte); un errore a metà lascia l'importazione parziale |
 | POST | `/telegram/webhook` | update di Telegram | 200 (401 senza il secret corretto) |
 
 Validazione dei body: si accettano solo i campi elencati (un campo in più, anche solo scritto male, dà 400). `nome_materia` e `nome_argomento` sono testi non vuoti fino a 100 caratteri, `domanda` e `risposta` fino a 5000; `opzioni` è `null` o un elenco di al massimo 9 testi; `difficolta` è un intero da 1 a 5 (3 se omessa). Gli spazi iniziali e finali vengono tolti. In modifica non si possono cambiare `id_materia` e `id_argomento`.

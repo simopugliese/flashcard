@@ -1,6 +1,7 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { and, desc, eq, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { argomento, carta, ripasso } from "./schema";
+import type { FiltroRipasso } from "./validazione";
 
 type Db = DrizzleD1Database;
 type Ripasso = typeof ripasso.$inferSelect;
@@ -13,20 +14,19 @@ export const oggi = (giorni = 0) => {
   return d.toISOString().slice(0, 10);
 };
 
-export const carteDaRipassare = (d: Db, idMateria?: number, argomenti?: number[]) =>
-  d
+// Modo "scadenza": carte da ripassare oggi; "anticipo": solo quelle non ancora in scadenza; "tutte": senza filtro sulla data.
+export const carteDaRipassare = (d: Db, { idMateria, argomenti, modo, casuale, limite }: FiltroRipasso = { modo: "scadenza", casuale: false }) => {
+  const data = modo === "scadenza" ? lte(ripasso.prossimo_ripasso, oggi()) : modo === "anticipo" ? gt(ripasso.prossimo_ripasso, oggi()) : undefined;
+  const ordine = casuale ? [sql`random()`] : [ripasso.prossimo_ripasso, desc(carta.difficolta), ripasso.media_esito];
+  const q = d
     .select({ carta, ripasso })
     .from(carta)
     .innerJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
     .innerJoin(argomento, eq(argomento.id_argomento, carta.id_argomento))
-    .where(
-      and(
-        lte(ripasso.prossimo_ripasso, oggi()),
-        idMateria ? eq(argomento.id_materia, idMateria) : undefined,
-        argomenti ? inArray(carta.id_argomento, argomenti) : undefined,
-      ),
-    )
-    .orderBy(ripasso.prossimo_ripasso, desc(carta.difficolta), ripasso.media_esito);
+    .where(and(data, idMateria ? eq(argomento.id_materia, idMateria) : undefined, argomenti ? inArray(carta.id_argomento, argomenti) : undefined))
+    .orderBy(...ordine);
+  return limite ? q.limit(limite) : q;
+};
 
 // Aggiorna il ripasso solo se nel frattempo nessun altro voto l'ha modificato:
 // restituisce undefined se il voto arriva tardi (doppio click, carta già ripassata altrove).

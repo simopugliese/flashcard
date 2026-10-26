@@ -364,8 +364,19 @@ function aggiornaInizia() {
 function iniziaSessione() {
   const argomenti = [...document.querySelectorAll("#scelta-argomenti input:checked")].map((c) => c.value).join(",");
   esegui($("inizia"), $("avviso"), async () => {
-    const coda = await api(`/carte/da-ripassare?materia=${$("scelta-materia").value}&argomenti=${argomenti}`);
-    if (!coda.length) return avviso("Non ci sono carte da ripassare per la selezione scelta. Riprova più avanti o scegli altri argomenti.", "info");
+    const modo = $("scelta-modo").value;
+    const query = new URLSearchParams({ materia: $("scelta-materia").value, argomenti, modo, casuale: $("scelta-casuale").checked ? 1 : 0 });
+    const limite = $("scelta-limite").value.trim();
+    if (limite) query.set("limite", limite);
+    const coda = await api(`/carte/da-ripassare?${query}`);
+    if (!coda.length) {
+      const nessuna = {
+        scadenza: "Non ci sono carte da ripassare per la selezione scelta. Riprova più avanti, scegli altri argomenti o usa un altro modo.",
+        anticipo: "Tutte le carte della selezione sono già in scadenza: usa il modo «In scadenza».",
+        tutte: "La selezione scelta non contiene carte.",
+      };
+      return avviso(nessuna[modo], "info");
+    }
     stato.coda = coda;
     stato.indice = 0;
     mostra("sessione");
@@ -566,3 +577,37 @@ function cercaOra() {
 }
 
 vaiHome();
+
+function esporta() {
+  esegui($("esporta"), $("avviso"), async () => {
+    const res = await fetch("/esporta");
+    if (!res.ok) throw new Error("Esportazione non riuscita.");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await res.blob());
+    link.download = `flashcard-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+}
+
+async function importa(campo) {
+  const file = campo.files[0];
+  campo.value = "";
+  if (!file) return;
+  let dati;
+  try {
+    dati = JSON.parse(await file.text());
+  } catch {
+    return avviso("Il file non è un JSON valido.");
+  }
+  campo.disabled = true;
+  try {
+    const r = await api("/importa", "POST", dati);
+    avviso(`Importate ${r.materie} materie, ${r.argomenti} argomenti e ${r.carte} carte.`, "success");
+    caricaMaterie();
+  } catch (e) {
+    avviso(e.message);
+  } finally {
+    campo.disabled = false;
+  }
+}

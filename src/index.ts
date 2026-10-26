@@ -9,6 +9,8 @@ import {
   ErroreValidazione,
   idPercorso,
   inesistente,
+  leggiFiltroRipasso,
+  leggiImportazione,
   leggiMateria,
   leggiModificaArgomento,
   leggiModificaCarta,
@@ -114,10 +116,78 @@ app.get("/argomenti/:id/carte", async (c) =>
 );
 
 app.get("/carte/da-ripassare", async (c) => {
-  const { materia: idMateria, argomenti } = c.req.query();
-  return c.json(
-    await carteDaRipassare(db(c), idMateria ? +idMateria : undefined, argomenti ? argomenti.split(",").map(Number) : undefined),
-  );
+  return c.json(await carteDaRipassare(db(c), leggiFiltroRipasso(c.req.query())));
+});
+
+// Esportazione completa (senza id, che vengono rigenerati all'importazione).
+app.get("/esporta", async (c) => {
+  const d = db(c);
+  const [materie, argomenti, carte] = await Promise.all([
+    d.select().from(materia),
+    d.select().from(argomento),
+    d.select({ carta, ripasso }).from(carta).innerJoin(ripasso, eq(ripasso.id_carta, carta.id_carta)),
+  ]);
+  const raggruppa = <T>(righe: T[], chiave: (r: T) => number) => {
+    const gruppi = new Map<number, T[]>();
+    for (const r of righe) gruppi.set(chiave(r), (gruppi.get(chiave(r)) ?? []).concat([r]));
+    return gruppi;
+  };
+  const perArgomento = raggruppa(carte, (r) => r.carta.id_argomento);
+  const perMateria = raggruppa(argomenti, (a) => a.id_materia);
+  const archivio = {
+    versione: 1,
+    materie: materie.map((m) => ({
+      nome_materia: m.nome_materia,
+      argomenti: (perMateria.get(m.id_materia) ?? []).map((a) => ({
+        nome_argomento: a.nome_argomento,
+        carte: (perArgomento.get(a.id_argomento) ?? []).map(({ carta: k, ripasso: r }) => ({
+          domanda: k.domanda,
+          risposta: k.risposta,
+          opzioni: k.opzioni,
+          difficolta: k.difficolta,
+          ripasso: {
+            ultimo_ripasso: r.ultimo_ripasso,
+            prossimo_ripasso: r.prossimo_ripasso,
+            media_esito: r.media_esito,
+            numero_ripassi: r.numero_ripassi,
+          },
+        })),
+      })),
+    })),
+  };
+  c.header("Content-Disposition", `attachment; filename="flashcard-${oggi()}.json"`);
+  return c.json(archivio);
+});
+
+// Aggiunge sempre nuovi record, senza toccare quelli esistenti. Con ?azzera=1 i ripassi ripartono da zero.
+// Le carte entrano a blocchi (D1 limita i parametri per query): un errore a metà lascia l'importazione parziale.
+app.post("/importa", async (c) => {
+  const { materie } = leggiImportazione(await c.req.json());
+  const azzera = c.req.query("azzera") === "1";
+  const d = db(c);
+  const conteggi = { materie: 0, argomenti: 0, carte: 0 };
+  for (const m of materie) {
+    const [nuova] = await d.insert(materia).values({ nome_materia: m.nome_materia }).returning();
+    conteggi.materie++;
+    for (const a of m.argomenti) {
+      const [nuovo] = await d.insert(argomento).values({ nome_argomento: a.nome_argomento, id_materia: nuova.id_materia }).returning();
+      conteggi.argomenti++;
+      for (let i = 0; i < a.carte.length; i += 10) {
+        const blocco = a.carte.slice(i, i + 10);
+        const inserite = await d
+          .insert(carta)
+          .values(blocco.map(({ ripasso: _, ...k }) => ({ ...k, id_argomento: nuovo.id_argomento })))
+          .returning({ id_carta: carta.id_carta });
+                await d.insert(ripasso).values(
+          inserite.map(({ id_carta }, j) =>
+            azzera ? { id_carta, prossimo_ripasso: oggi() } : { id_carta, ...blocco[j].ripasso },
+          ),
+        );
+        conteggi.carte += inserite.length;
+      }
+    }
+  }
+  return c.json(conteggi, 201);
 });
 
 app.get("/carte/:id", async (c) => {
