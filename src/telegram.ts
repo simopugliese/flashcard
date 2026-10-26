@@ -14,10 +14,10 @@ type Messaggio = { message_id: number; chat: { id: number } };
 type CallbackQuery = { id: string; from: { id: number }; data?: string; message?: Messaggio };
 
 // Le domande arrivano solo tra le 9 e le 22 (ora italiana), a distanza casuale tra 1 e 3 ore.
-const ORA_INIZIO = 9;
-const ORA_FINE = 22;
-const MINUTI_MIN = 60;
-const MINUTI_MAX = 180;
+const ORA_INIZIO = 8;
+const ORA_FINE = 23;
+const MINUTI_MIN = 30;
+const MINUTI_MAX = 90;
 
 const tg = async (env: Env, metodo: string, body: object) => {
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${metodo}`, {
