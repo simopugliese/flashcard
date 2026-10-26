@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, getTableColumns, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { materia, argomento, carta, ripasso } from "./schema";
 import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
@@ -129,7 +130,12 @@ app.get("/esporta", async (c) => {
   ]);
   const raggruppa = <T>(righe: T[], chiave: (r: T) => number) => {
     const gruppi = new Map<number, T[]>();
-    for (const r of righe) gruppi.set(chiave(r), (gruppi.get(chiave(r)) ?? []).concat([r]));
+    for (const r of righe) {
+      const k = chiave(r);
+      const gruppo = gruppi.get(k);
+      if (gruppo) gruppo.push(r);
+      else gruppi.set(k, [r]);
+    }
     return gruppi;
   };
   const perArgomento = raggruppa(carte, (r) => r.carta.id_argomento);
@@ -159,35 +165,90 @@ app.get("/esporta", async (c) => {
   return c.json(archivio);
 });
 
-// Aggiunge sempre nuovi record, senza toccare quelli esistenti. Con ?azzera=1 i ripassi ripartono da zero.
-// Le carte entrano a blocchi (D1 limita i parametri per query): un errore a metà lascia l'importazione parziale.
+const blocchi = <T>(v: T[], n = 10) => Array.from({ length: Math.ceil(v.length / n) }, (_, i) => v.slice(i * n, (i + 1) * n));
+const chiaveCarta = (idArgomento: number, domanda: string, risposta: string) => `${idArgomento}\u0000${domanda}\u0000${risposta}`;
+
+// Unisce l'archivio a quello esistente: materie e argomenti con lo stesso nome si riusano, le carte già presenti
+// (stesso argomento, domanda e risposta) si saltano, quindi reimportare lo stesso file non crea nulla di nuovo.
+// Gli id nuovi li assegna l'app e tutto entra in un solo batch D1 (una transazione): o entra tutto o niente.
+// Con ?azzera=1 i ripassi ripartono da zero. I blocchi da 10 righe restano entro i 100 parametri per query di D1.
 app.post("/importa", async (c) => {
   const { materie } = leggiImportazione(await c.req.json());
   const azzera = c.req.query("azzera") === "1";
   const d = db(c);
-  const conteggi = { materie: 0, argomenti: 0, carte: 0 };
+
+  // Gli id ripartono dal massimo tra il contatore AUTOINCREMENT e le righe presenti, per non riusare id già eliminati.
+  const ultimo = (tabella: string, colonna: string) =>
+    `max((SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = '${tabella}'), (SELECT coalesce(max(${colonna}), 0) FROM ${tabella}))`;
+  const [[inizio], esistentiM, esistentiA, esistentiC] = await Promise.all([
+    d.all<{ m: number; a: number; c: number }>(
+      sql.raw(`SELECT ${ultimo("materia", "id_materia")} AS m, ${ultimo("argomento", "id_argomento")} AS a, ${ultimo("carta", "id_carta")} AS c`),
+    ),
+    d.select().from(materia),
+    d.select().from(argomento),
+    d.select({ id_argomento: carta.id_argomento, domanda: carta.domanda, risposta: carta.risposta }).from(carta),
+  ]);
+
+  let { m: idMateria, a: idArgomento, c: idCarta } = inizio;
+  const materiePerNome = new Map<string, number>();
+  for (const m of esistentiM) if (!materiePerNome.has(m.nome_materia)) materiePerNome.set(m.nome_materia, m.id_materia);
+  const argomentiPerNome = new Map<string, number>();
+  for (const a of esistentiA) {
+    const k = `${a.id_materia}\u0000${a.nome_argomento}`;
+    if (!argomentiPerNome.has(k)) argomentiPerNome.set(k, a.id_argomento);
+  }
+  const cartePresenti = new Set(esistentiC.map((k) => chiaveCarta(k.id_argomento, k.domanda, k.risposta)));
+
+  const nuoveMaterie: (typeof materia.$inferInsert)[] = [];
+  const nuoviArgomenti: (typeof argomento.$inferInsert)[] = [];
+  const nuoveCarte: (typeof carta.$inferInsert)[] = [];
+  const nuoviRipassi: (typeof ripasso.$inferInsert)[] = [];
+  let saltate = 0;
   for (const m of materie) {
-    const [nuova] = await d.insert(materia).values({ nome_materia: m.nome_materia }).returning();
-    conteggi.materie++;
+    let idM = materiePerNome.get(m.nome_materia);
+    if (idM === undefined) {
+      idM = ++idMateria;
+      materiePerNome.set(m.nome_materia, idM);
+      nuoveMaterie.push({ id_materia: idM, nome_materia: m.nome_materia });
+    }
     for (const a of m.argomenti) {
-      const [nuovo] = await d.insert(argomento).values({ nome_argomento: a.nome_argomento, id_materia: nuova.id_materia }).returning();
-      conteggi.argomenti++;
-      for (let i = 0; i < a.carte.length; i += 10) {
-        const blocco = a.carte.slice(i, i + 10);
-        const inserite = await d
-          .insert(carta)
-          .values(blocco.map(({ ripasso: _, ...k }) => ({ ...k, id_argomento: nuovo.id_argomento })))
-          .returning({ id_carta: carta.id_carta });
-                await d.insert(ripasso).values(
-          inserite.map(({ id_carta }, j) =>
-            azzera ? { id_carta, prossimo_ripasso: oggi() } : { id_carta, ...blocco[j].ripasso },
-          ),
-        );
-        conteggi.carte += inserite.length;
+      const chiaveArgomento = `${idM}\u0000${a.nome_argomento}`;
+      let idA = argomentiPerNome.get(chiaveArgomento);
+      if (idA === undefined) {
+        idA = ++idArgomento;
+        argomentiPerNome.set(chiaveArgomento, idA);
+        nuoviArgomenti.push({ id_argomento: idA, nome_argomento: a.nome_argomento, id_materia: idM });
+      }
+      for (const { ripasso: r, ...k } of a.carte) {
+        const chiave = chiaveCarta(idA, k.domanda, k.risposta);
+        if (cartePresenti.has(chiave)) {
+          saltate++;
+          continue;
+        }
+        cartePresenti.add(chiave);
+        const idK = ++idCarta;
+        nuoveCarte.push({ ...k, id_carta: idK, id_argomento: idA });
+        nuoviRipassi.push(azzera ? { id_carta: idK, prossimo_ripasso: oggi() } : { id_carta: idK, ...r });
       }
     }
   }
-  return c.json(conteggi, 201);
+
+  const istruzioni: BatchItem<"sqlite">[] = [
+    ...blocchi(nuoveMaterie).map((b) => d.insert(materia).values(b)),
+    ...blocchi(nuoviArgomenti).map((b) => d.insert(argomento).values(b)),
+    ...blocchi(nuoveCarte).map((b) => d.insert(carta).values(b)),
+    ...blocchi(nuoviRipassi).map((b) => d.insert(ripasso).values(b)),
+  ];
+  if (istruzioni.length) {
+    try {
+      await d.batch(istruzioni as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+    } catch (e) {
+      // Qualcuno ha inserito nel frattempo con gli stessi id: nulla è stato scritto, basta riprovare.
+      if (/UNIQUE|PRIMARY KEY/i.test(`${e} ${(e as Error).cause}`)) return c.json({ errore: "i dati sono cambiati durante l'importazione, riprova" }, 409);
+      throw e;
+    }
+  }
+  return c.json({ materie: nuoveMaterie.length, argomenti: nuoviArgomenti.length, carte: nuoveCarte.length, saltate }, 201);
 });
 
 app.get("/carte/:id", async (c) => {

@@ -603,7 +603,7 @@ async function importa(campo) {
   campo.disabled = true;
   try {
     const r = await api("/importa", "POST", dati);
-    avviso(`Importate ${r.materie} materie, ${r.argomenti} argomenti e ${r.carte} carte.`, "success");
+    avviso(`Importate ${r.materie} materie, ${r.argomenti} argomenti e ${r.carte} carte nuove${r.saltate ? ` (${r.saltate} già presenti, saltate)` : ""}.`, "success");
     caricaMaterie();
   } catch (e) {
     avviso(e.message);

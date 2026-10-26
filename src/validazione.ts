@@ -102,8 +102,13 @@ export const leggiFiltroRipasso = (q: Record<string, string>): FiltroRipasso => 
 };
 
 export const MAX_CARTE_IMPORT = 5000;
-const dataIso = (v: unknown, nome: string) =>
-  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : errore(`${nome} deve essere una data AAAA-MM-GG`);
+// Data reale nel formato AAAA-MM-GG: Date.parse accetta anche giorni inesistenti (2026-02-31 diventa marzo),
+// quindi si ricostruisce la data e si verifica che coincida con quella scritta.
+const dataIso = (v: unknown, nome: string) => {
+  const m = typeof v === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  if (m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toISOString().slice(0, 10) === v) return v as string;
+  return errore(`${nome} deve essere una data AAAA-MM-GG`);
+};
 
 const elenco = (v: unknown, nome: string, max: number) =>
   Array.isArray(v) && v.length <= max ? (v as unknown[]) : errore(`${nome} deve essere un elenco di al massimo ${max} elementi`);
