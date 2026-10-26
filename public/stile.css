@@ -1,0 +1,117 @@
+/* Stile dell'app. Va caricato dopo Bootstrap, di cui sovrascrive variabili e componenti. */
+
+/* ---------- Palette (dal logo) ---------- */
+:root {
+  --colore-verde: #1EA06D;
+  --colore-verde-scuro: #188559;
+  --colore-verde-intenso: #136b47;
+  --colore-successo: #157347;
+  --colore-arancione: #F48330;
+  --colore-arancione-scuro: #E0701F;
+  --colore-arancione-testo: #C9600F;
+  --colore-crema: #FCF9F2;
+  --colore-crema-arancio: #FFF8F0;
+  --colore-menta: #E1EDE1;
+
+  --bs-primary: var(--colore-verde);
+  --bs-primary-rgb: 30, 160, 109;
+  --bs-link-color: var(--colore-verde-scuro);
+  --bs-link-color-rgb: 24, 133, 89;
+  --bs-link-hover-color: var(--colore-verde-intenso);
+  --bs-link-hover-color-rgb: 19, 107, 71;
+  --bs-warning: var(--colore-arancione);
+  --bs-warning-rgb: 244, 131, 48;
+  --bs-success: var(--colore-successo);
+  --bs-success-rgb: 21, 115, 71;
+  --bs-body-bg: var(--colore-crema);
+  --bs-body-bg-rgb: 252, 249, 242;
+  --bs-tertiary-bg: var(--colore-menta);
+  --bs-tertiary-bg-rgb: 225, 237, 225;
+  --bs-focus-ring-color: rgba(30, 160, 109, .25);
+}
+
+/* ---------- Componenti Bootstrap ---------- */
+.btn-primary {
+  --bs-btn-bg: var(--colore-verde);
+  --bs-btn-border-color: var(--colore-verde);
+  --bs-btn-hover-bg: var(--colore-verde-scuro);
+  --bs-btn-hover-border-color: var(--colore-verde-scuro);
+  --bs-btn-active-bg: var(--colore-verde-intenso);
+  --bs-btn-active-border-color: var(--colore-verde-intenso);
+  --bs-btn-disabled-bg: var(--colore-verde);
+  --bs-btn-disabled-border-color: var(--colore-verde);
+  --bs-btn-focus-shadow-rgb: 30, 160, 109;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--colore-verde-scuro);
+  --bs-btn-border-color: var(--colore-verde);
+  --bs-btn-hover-bg: var(--colore-verde);
+  --bs-btn-hover-border-color: var(--colore-verde);
+  --bs-btn-active-bg: var(--colore-verde-scuro);
+  --bs-btn-active-border-color: var(--colore-verde-scuro);
+  --bs-btn-disabled-color: var(--colore-verde);
+  --bs-btn-disabled-border-color: var(--colore-verde);
+  --bs-btn-focus-shadow-rgb: 30, 160, 109;
+}
+
+.btn-outline-warning {
+  --bs-btn-color: var(--colore-arancione-testo);
+  --bs-btn-border-color: var(--colore-arancione);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--colore-arancione);
+  --bs-btn-hover-border-color: var(--colore-arancione);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--colore-arancione-scuro);
+  --bs-btn-active-border-color: var(--colore-arancione-scuro);
+  --bs-btn-focus-shadow-rgb: 244, 131, 48;
+}
+
+/* ---------- Layout ---------- */
+.contenuto { max-width: 720px; }
+.contenuto-largo { max-width: 1320px; } /* vista a card: dopo .contenuto, a pari specificità */
+
+.testo-carta { white-space: pre-wrap; }
+
+.navbar-verde { background-color: var(--bs-primary); }
+.navbar-verde img { background: var(--colore-crema); padding: 1px; }
+
+/* ---------- Card girevoli ---------- */
+.griglia-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+.griglia-card > .col-12 { grid-column: 1 / -1; } /* messaggio di elenco vuoto */
+
+.carta-wrap { position: relative; }
+.carta-flip { perspective: 1000px; cursor: pointer; height: 100%; border-radius: .75rem; }
+.carta-interna { display: grid; height: 100%; transform-style: preserve-3d; transition: transform .5s; }
+.carta-flip.girata .carta-interna { transform: rotateY(180deg); }
+
+/* Le due facce occupano la stessa cella: l'altezza è quella della più alta. */
+.carta-faccia {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  padding: 2.75rem 1rem 1rem;
+  background: var(--colore-crema);
+  border: 2px solid var(--bs-primary);
+  border-radius: .75rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.carta-faccia.retro { transform: rotateY(180deg); border-color: var(--colore-arancione); background: var(--colore-crema-arancio); }
+.carta-faccia .etichetta { position: absolute; top: .9rem; left: 1rem; text-transform: uppercase; letter-spacing: .04em; }
+.carta-faccia .multipla { position: absolute; top: .75rem; right: 5.5rem; }
+
+.carta-azioni { position: absolute; top: .5rem; right: .5rem; z-index: 1; }
+
+.sbagliate li { text-decoration: line-through; }
+.sbagliate li::before { content: "✗ "; }
+
+@media (prefers-reduced-motion: reduce) {
+  .carta-interna { transition: none; }
+}

@@ -107,7 +107,13 @@ function statistiche(media, ripassi, mai) {
 function mostra(id) {
   document.querySelectorAll(".schermata").forEach((s) => s.classList.toggle("d-none", s.id !== id));
   $("avviso").innerHTML = "";
+  adattaLarghezza(id);
   window.scrollTo(0, 0);
+}
+
+// La vista a card usa tutta la larghezza disponibile; le altre schermate restano strette per la leggibilità.
+function adattaLarghezza(schermata) {
+  $("principale").classList.toggle("contenuto-largo", schermata === "argomento" && vistaCarte() === "card");
 }
 
 function vaiHome() {
@@ -253,6 +259,7 @@ function cartaFlip(carta, ripasso) {
 
 function caricaCarte() {
   const vista = vistaCarte();
+  adattaLarghezza("argomento");
   $("vista-lista").classList.toggle("active", vista === "lista");
   $("vista-card").classList.toggle("active", vista === "card");
   elenco(
@@ -271,7 +278,7 @@ function caricaCarte() {
     "Non hai ancora carte in questo argomento.",
     "Crea la prima carta",
     nuovaCarta,
-    vista === "card" ? "row row-cols-1 row-cols-sm-2 g-3" : "list-group",
+    vista === "card" ? "griglia-card" : "list-group",
   );
 }
 
