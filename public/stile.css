@@ -91,6 +91,7 @@
 .contenuto-largo { max-width: 1320px; } /* vista a card: dopo .contenuto, a pari specificità */
 
 .testo-carta { white-space: pre-wrap; }
+.min-w-0 { min-width: 0; } /* il testo di una riga di elenco può restringersi accanto ai bottoni */
 
 .navbar-verde { background-color: var(--bs-primary); }
 .navbar-verde img { background: var(--colore-crema); padding: 1px; }
