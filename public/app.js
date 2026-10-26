@@ -71,13 +71,15 @@ function conferma(messaggio, elimina) {
   bootstrap.Modal.getOrCreateInstance(modale).show();
 }
 
-async function elenco(id, percorso, disegna, vuoto, etichetta, crea) {
+async function elenco(id, percorso, disegna, vuoto, etichetta, crea, classe = "list-group") {
   const lista = $(id);
+  lista.className = classe;
   lista.innerHTML = caricamento;
   try {
     const elementi = await api(percorso);
     if (elementi.length) return lista.replaceChildren(...elementi.map(disegna));
     const blocco = $("modello-vuoto").content.firstElementChild.cloneNode(true);
+    blocco.classList.add("col-12");
     blocco.querySelector(".messaggio").textContent = vuoto;
     blocco.querySelector(".crea").textContent = etichetta;
     blocco.querySelector(".crea").onclick = crea;
@@ -208,21 +210,68 @@ function apriArgomento(argomento) {
   caricaCarte();
 }
 
+function vistaCarte() {
+  try {
+    return localStorage.getItem("vistaCarte") === "card" ? "card" : "lista";
+  } catch {
+    return "lista";
+  }
+}
+
+function impostaVista(vista) {
+  try {
+    localStorage.setItem("vistaCarte", vista);
+  } catch {}
+  caricaCarte();
+}
+
+function cartaFlip(carta, ripasso) {
+  const elemento = $("modello-card").content.firstElementChild.cloneNode(true);
+  const flip = elemento.querySelector(".carta-flip");
+  const gira = () => {
+    flip.classList.toggle("girata");
+    flip.setAttribute("aria-pressed", flip.classList.contains("girata"));
+  };
+  flip.onclick = gira;
+  flip.onkeydown = (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    gira();
+  };
+  elemento.querySelector(".domanda").textContent = carta.domanda;
+  elemento.querySelector(".risposta").textContent = (carta.opzioni?.length ? "✓ " : "") + carta.risposta;
+  elemento.querySelector(".nota").textContent = statistiche(ripasso.media_esito, ripasso.numero_ripassi, "mai ripassata");
+  elemento.querySelector(".multipla").classList.toggle("d-none", !carta.opzioni?.length);
+  elemento.querySelector(".risposta").classList.toggle("text-success", !!carta.opzioni?.length);
+  elemento.querySelector(".sbagliate").replaceChildren(
+    ...(carta.opzioni ?? []).map((o) => Object.assign(document.createElement("li"), { textContent: o })),
+  );
+  elemento.querySelector(".modifica").onclick = () => modificaCarta(carta);
+  elemento.querySelector(".elimina").onclick = () => eliminaCarta(carta);
+  return elemento;
+}
+
 function caricaCarte() {
+  const vista = vistaCarte();
+  $("vista-lista").classList.toggle("active", vista === "lista");
+  $("vista-card").classList.toggle("active", vista === "card");
   elenco(
     "lista-carte",
     `/argomenti/${stato.argomento.id_argomento}/carte`,
     ({ carta, ripasso }) =>
-      riga(
-        carta.domanda,
-        () => modificaCarta(carta),
-        () => modificaCarta(carta),
-        () => eliminaCarta(carta),
-        statistiche(ripasso.media_esito, ripasso.numero_ripassi, "mai ripassata"),
-      ),
+      vista === "card"
+        ? cartaFlip(carta, ripasso)
+        : riga(
+            carta.domanda,
+            () => modificaCarta(carta),
+            () => modificaCarta(carta),
+            () => eliminaCarta(carta),
+            statistiche(ripasso.media_esito, ripasso.numero_ripassi, "mai ripassata"),
+          ),
     "Non hai ancora carte in questo argomento.",
     "Crea la prima carta",
     nuovaCarta,
+    vista === "card" ? "row row-cols-1 row-cols-sm-2 g-3" : "list-group",
   );
 }
 

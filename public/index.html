@@ -60,6 +60,23 @@
       --bs-btn-active-border-color: #E0701F;
       --bs-btn-focus-shadow-rgb: 244, 131, 48;
     }
+    .carta-wrap { position: relative; height: 100%; }
+    .carta-flip { perspective: 1000px; cursor: pointer; height: 100%; border-radius: .75rem; }
+    .carta-interna { display: grid; height: 100%; transform-style: preserve-3d; transition: transform .5s; }
+    .carta-flip.girata .carta-interna { transform: rotateY(180deg); }
+    .carta-faccia {
+      grid-area: 1 / 1; display: flex; flex-direction: column; min-height: 200px;
+      padding: 2.75rem 1rem 1rem; background: #FCF9F2; border: 2px solid var(--bs-primary);
+      border-radius: .75rem; box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    }
+    .carta-faccia.retro { transform: rotateY(180deg); border-color: #F48330; background: #FFF8F0; }
+    .carta-faccia .etichetta { position: absolute; top: .9rem; left: 1rem; text-transform: uppercase; letter-spacing: .04em; }
+    .carta-faccia .multipla { position: absolute; top: .75rem; right: 5.5rem; }
+    .carta-azioni { position: absolute; top: .5rem; right: .5rem; z-index: 1; }
+    .sbagliate li::before { content: "✗ "; }
+    .sbagliate li { text-decoration: line-through; }
+    @media (prefers-reduced-motion: reduce) { .carta-interna { transition: none; } }
     .navbar-verde { background-color: var(--bs-primary); }
     .navbar-verde img { background: #FCF9F2; padding: 1px; }
   </style>
@@ -116,6 +133,10 @@
       <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
         <h1 class="h4 mb-0 text-break" id="titolo-argomento"></h1>
         <button class="btn btn-outline-primary" onclick="nuovaCarta()">+ Nuova carta</button>
+      </div>
+      <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Vista delle carte">
+        <button type="button" class="btn btn-outline-secondary" id="vista-lista" onclick="impostaVista('lista')">Lista</button>
+        <button type="button" class="btn btn-outline-secondary" id="vista-card" onclick="impostaVista('card')">Card</button>
       </div>
       <div id="lista-carte" class="list-group"></div>
     </section>
@@ -258,6 +279,36 @@
       <small class="text-body-secondary text-nowrap nota"></small>
       <button class="btn btn-sm btn-outline-secondary modifica">Modifica</button>
       <button class="btn btn-sm btn-outline-danger elimina">Elimina</button>
+    </div>
+  </template>
+
+  <template id="modello-card">
+    <div class="col">
+      <div class="carta-wrap">
+        <div class="carta-flip" role="button" tabindex="0" aria-pressed="false" aria-label="Gira la carta">
+          <div class="carta-interna">
+            <div class="carta-faccia fronte">
+              <small class="etichetta text-body-secondary">Domanda</small>
+              <span class="badge text-bg-warning multipla">Scelta multipla</span>
+              <div class="testo-carta text-break flex-grow-1 domanda"></div>
+              <small class="text-body-secondary mt-2 nota"></small>
+            </div>
+            <div class="carta-faccia retro">
+              <small class="etichetta text-body-secondary">Risposta</small>
+              <div class="testo-carta text-break fw-semibold risposta"></div>
+              <ul class="list-unstyled mb-0 mt-3 small text-body-secondary sbagliate"></ul>
+            </div>
+          </div>
+        </div>
+        <div class="carta-azioni d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary modifica" aria-label="Modifica" title="Modifica">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger elimina" aria-label="Elimina" title="Elimina">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </template>
 
