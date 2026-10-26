@@ -67,6 +67,18 @@ Nell'elenco di carte e argomenti, accanto a ogni riga, l'app mostra la media dei
   - `media`: media dei voti dati nell'argomento pesata per difficoltà (formula qui sotto), oppure `null` se `ripassi` è 0.
 - La media è **pesata** due volte: una carta ripassata 10 volte conta 10 volte più di una ripassata una sola, e ogni voto pesa quanto la **difficoltà** della carta. Quindi `media = Σ(media_esito × numero_ripassi × difficoltà) / Σ(numero_ripassi × difficoltà)`: i voti sulle carte difficili contano di più di quelli sulle carte facili. Le carte mai ripassate non influiscono; `ripassi` resta il numero semplice di ripassi.
 
+### Ricerca
+
+Nella pagina di una materia il pulsante **Cerca** apre una schermata che cerca nelle carte di *quella* materia.
+
+- **Dati:** premendo Cerca il frontend scarica una volta sola le carte della materia (`GET /materie/:id/carte`); da lì il filtro lavora in memoria, quindi i risultati compaiono mentre si scrive, senza altre richieste. Non c'è cache: ogni volta che si riapre la ricerca i dati sono ricaricati, e lo stesso avviene dopo ogni modifica di una carta fatta dai risultati.
+- **Dove cerca:** nella domanda, nella risposta e nelle opzioni sbagliate. Ogni risultato mostra i badge **Domanda**, **Risposta**, **Opzioni** dove ha trovato qualcosa, il nome dell'argomento e il testo trovato evidenziato.
+- **Confronto:** senza distinzione di maiuscole e accenti (`perche`, `perché` e `PERCHÈ` sono equivalenti), con ogni spazio o a capo trattato come uno spazio.
+- **Più parole:** devono esserci tutte, in qualsiasi ordine, anche in campi diversi. Se compaiono vicine e nell'ordine scritto il risultato ha il badge **Frase esatta**. Tra virgolette (`"cielo blu"`) cerca solo la frase esatta.
+- **Ordine:** prima le frasi esatte, poi le corrispondenze nella domanda, poi quelle solo in risposta o opzioni.
+- **Filtro per argomento:** le caselle sotto il campo escludono gli argomenti non selezionati.
+- Si mostrano al massimo 100 risultati (costante `MAX_RISULTATI` in `public/app.js`); oltre, la schermata invita ad affinare la ricerca. Cliccando un risultato si apre la modifica della carta.
+
 ## API
 
 Tutte le richieste e risposte sono in JSON.
@@ -79,6 +91,7 @@ Tutte le richieste e risposte sono in JSON.
 | PUT | `/materie/:id` | `{ nome_materia }` | materia aggiornata |
 | DELETE | `/materie/:id` | – | 204 |
 | GET | `/materie/:id/argomenti` | – | argomenti della materia, ciascuno con `media` e `ripassi` (vedi [Media di risposta](#media-di-risposta)) |
+| GET | `/materie/:id/carte` | – | tutte le carte della materia, ciascuna con `nome_argomento` (usata dalla [Ricerca](#ricerca)) |
 | GET | `/argomenti/:id` | – | un argomento |
 | POST | `/argomenti` | `{ nome_argomento, id_materia }` | argomento creato (201) |
 | PUT | `/argomenti/:id` | campi da modificare | argomento aggiornato |

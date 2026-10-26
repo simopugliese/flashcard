@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
 const stato = { materia: null, argomento: null, coda: [], indice: 0 };
+const ricerca = { carte: [], esclusi: new Set() };
+const MAX_RISULTATI = 100;
+const caricamento = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
 
 async function api(percorso, metodo = "GET", dati) {
   let res;
@@ -70,7 +73,7 @@ function conferma(messaggio, elimina) {
 
 async function elenco(id, percorso, disegna, vuoto, etichetta, crea) {
   const lista = $(id);
-  lista.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
+  lista.innerHTML = caricamento;
   try {
     const elementi = await api(percorso);
     if (elementi.length) return lista.replaceChildren(...elementi.map(disegna));
@@ -237,13 +240,13 @@ function nuovaCarta() {
   });
 }
 
-function modificaCarta(carta) {
+function modificaCarta(carta, dopo = caricaCarte) {
   const { domanda, risposta, difficolta } = carta;
   const opzioni = (carta.opzioni ?? []).join("\n");
   apriModale("modale-carta", "Modifica carta", { domanda, risposta, opzioni, difficolta }, async (dati) => {
     await api(`/carte/${carta.id_carta}`, "PUT", datiCarta(dati));
     avviso("Carta modificata.", "success");
-    caricaCarte();
+    dopo();
   });
 }
 
@@ -360,6 +363,135 @@ async function vota(voto) {
   stato.indice++;
   if (stato.indice < stato.coda.length) mostraCarta();
   else mostra("fine");
+}
+
+// Minuscolo, senza accenti e con ogni spazio ridotto a " ": mantiene la lunghezza del testo, così gli indici
+// trovati nel testo normalizzato valgono anche per quello originale (serve per evidenziare).
+const base = (s) => [...s.normalize("NFC")].map((c) => (/\s/.test(c) ? " " : c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase())).join("");
+
+async function apriRicerca() {
+  ricerca.esclusi.clear();
+  $("campo-ricerca").value = "";
+  $("titolo-ricerca").textContent = "Cerca in " + stato.materia.nome_materia;
+  $("indietro-ricerca").textContent = "← " + stato.materia.nome_materia;
+  mostra("ricerca");
+  await caricaRicerca();
+  $("campo-ricerca").focus();
+}
+
+// Scarica le carte della materia aperta e le prepara per la ricerca; si richiama dopo ogni modifica.
+async function caricaRicerca() {
+  const id = stato.materia.id_materia;
+  const campo = $("campo-ricerca");
+  campo.disabled = true;
+  $("conteggio-ricerca").textContent = "";
+  $("risultati-ricerca").innerHTML = caricamento;
+  try {
+    const carte = await api(`/materie/${id}/carte`);
+    if (stato.materia.id_materia !== id) return;
+    ricerca.carte = carte.map((c) => {
+      const t = { domanda: c.domanda, risposta: c.risposta, opzioni: (c.opzioni ?? []).join(" · ") };
+      for (const k in t) t[k] = t[k].normalize("NFC");
+      return { ...c, t, n: Object.fromEntries(Object.entries(t).map(([k, v]) => [k, base(v)])) };
+    });
+    const argomenti = [...new Map(carte.map((c) => [c.id_argomento, c.nome_argomento]))];
+    $("ricerca-argomenti").replaceChildren(
+      ...argomenti.map(([idArgomento, nome]) => {
+        const voce = $("modello-argomento").content.firstElementChild.cloneNode(true);
+        const casella = voce.querySelector("input");
+        casella.checked = !ricerca.esclusi.has(idArgomento);
+        casella.onchange = () => {
+          casella.checked ? ricerca.esclusi.delete(idArgomento) : ricerca.esclusi.add(idArgomento);
+          cercaOra();
+        };
+        voce.querySelector("span").textContent = nome;
+        return voce;
+      }),
+    );
+    campo.disabled = !carte.length;
+    cercaOra();
+  } catch (e) {
+    $("risultati-ricerca").innerHTML = "";
+    avviso(e.message);
+  }
+}
+
+// Le parole devono esserci tutte, in qualsiasi ordine; tra virgolette conta solo la frase intera.
+function interpretaRicerca(testo) {
+  const t = base(testo).trim();
+  const frase = t.replace(/"/g, "").trim().replace(/ +/g, " ");
+  if (!frase) return null;
+  return { frase, parole: t.startsWith('"') ? [frase] : frase.split(" "), esatta: frase.includes(" ") };
+}
+
+function trova(carta, q) {
+  const campi = ["domanda", "risposta", "opzioni"];
+  if (!q.parole.every((p) => campi.some((k) => carta.n[k].includes(p)))) return null;
+  const dove = Object.fromEntries(campi.map((k) => [k, q.parole.some((p) => carta.n[k].includes(p))]));
+  const esatta = q.esatta && campi.some((k) => carta.n[k].includes(q.frase));
+  return { carta, dove, esatta, rango: (esatta ? 0 : 2) + (dove.domanda ? 0 : 1) };
+}
+
+function evidenzia(elemento, testo, normalizzato, parole) {
+  const intervalli = [];
+  for (const p of parole) for (let i = normalizzato.indexOf(p); i >= 0; i = normalizzato.indexOf(p, i + p.length)) intervalli.push([i, i + p.length]);
+  intervalli.sort((a, b) => a[0] - b[0]);
+  const nodi = [];
+  let pos = 0;
+  for (const [da, a] of intervalli) {
+    if (a <= pos) continue;
+    const inizio = Math.max(da, pos);
+    const marca = document.createElement("mark");
+    marca.textContent = testo.slice(inizio, a);
+    nodi.push(testo.slice(pos, inizio), marca);
+    pos = a;
+  }
+  elemento.replaceChildren(...nodi, testo.slice(pos));
+}
+
+function disegnaRisultato({ carta, dove, esatta }, q) {
+  const elemento = $("modello-risultato").content.firstElementChild.cloneNode(true);
+  elemento.querySelector(".argomento").textContent = carta.nome_argomento;
+  const etichette = [esatta && ["Frase esatta", "success"], dove.domanda && ["Domanda", "primary"], dove.risposta && ["Risposta", "secondary"], dove.opzioni && ["Opzioni", "secondary"]];
+  elemento.querySelector(".etichette").replaceChildren(
+    ...etichette.filter(Boolean).map(([testo, colore]) => {
+      const badge = document.createElement("span");
+      badge.className = `badge text-bg-${colore}`;
+      badge.textContent = testo;
+      return badge;
+    }),
+  );
+  for (const k of ["domanda", "risposta", "opzioni"]) {
+    const blocco = elemento.querySelector("." + k);
+    if (k === "domanda" || dove[k]) evidenzia(blocco.querySelector(".valore"), carta.t[k], carta.n[k], q.parole);
+    else blocco.remove();
+  }
+  elemento.onclick = () => modificaCarta(carta, caricaRicerca);
+  return elemento;
+}
+
+function cercaOra() {
+  const lista = $("risultati-ricerca");
+  const q = interpretaRicerca($("campo-ricerca").value);
+  const messaggio = (testo) => {
+    const p = document.createElement("p");
+    p.className = "text-body-secondary text-center py-4 mb-0";
+    p.textContent = testo;
+    lista.replaceChildren(p);
+    $("conteggio-ricerca").textContent = "";
+  };
+  if (!ricerca.carte.length) return messaggio("Questa materia non ha ancora carte.");
+  if (!q) return messaggio("Scrivi per cercare nelle domande e nelle risposte.");
+  const trovati = ricerca.carte
+    .filter((c) => !ricerca.esclusi.has(c.id_argomento))
+    .map((c) => trova(c, q))
+    .filter(Boolean)
+    .sort((a, b) => a.rango - b.rango);
+  if (!trovati.length) return messaggio("Nessuna carta trovata.");
+  lista.replaceChildren(...trovati.slice(0, MAX_RISULTATI).map((r) => disegnaRisultato(r, q)));
+  $("conteggio-ricerca").textContent =
+    `${trovati.length} ${trovati.length === 1 ? "carta trovata" : "carte trovate"}` +
+    (trovati.length > MAX_RISULTATI ? ` · mostrate le prime ${MAX_RISULTATI}, affina la ricerca` : "");
 }
 
 vaiHome();

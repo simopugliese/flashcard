@@ -51,6 +51,16 @@ app.get("/materie/:id/argomenti", async (c) =>
   ),
 );
 
+app.get("/materie/:id/carte", async (c) =>
+  c.json(
+    await db(c)
+      .select({ ...getTableColumns(carta), nome_argomento: argomento.nome_argomento })
+      .from(carta)
+      .innerJoin(argomento, eq(argomento.id_argomento, carta.id_argomento))
+      .where(eq(argomento.id_materia, +c.req.param("id"))),
+  ),
+);
+
 app.get("/argomenti/:id", async (c) => {
   const [a] = await db(c).select().from(argomento).where(eq(argomento.id_argomento, +c.req.param("id")));
   return a ? c.json(a) : c.notFound();

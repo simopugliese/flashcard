@@ -38,9 +38,25 @@
       <button class="btn btn-link px-0 mb-2" onclick="vaiHome()">← Materie</button>
       <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
         <h1 class="h4 mb-0 text-break" id="titolo-materia"></h1>
-        <button class="btn btn-outline-primary" onclick="nuovoArgomento()">+ Nuovo argomento</button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary" onclick="apriRicerca()">Cerca</button>
+          <button class="btn btn-outline-primary" onclick="nuovoArgomento()">+ Nuovo argomento</button>
+        </div>
       </div>
       <div id="lista-argomenti" class="list-group"></div>
+    </section>
+
+    <section id="ricerca" class="schermata d-none">
+      <button class="btn btn-link px-0 mb-2" id="indietro-ricerca" onclick="apriMateria(stato.materia)"></button>
+      <h1 class="h4 mb-3 text-break" id="titolo-ricerca"></h1>
+      <div class="bg-body border rounded p-3 mb-3">
+        <input type="search" class="form-control form-control-lg" id="campo-ricerca" placeholder="Cerca nelle domande e nelle risposte" oninput="cercaOra()" autocomplete="off" disabled>
+        <div class="form-text">Maiuscole e accenti non contano. Tra virgolette cerchi la frase esatta.</div>
+        <div class="form-label fw-semibold mt-3">Argomenti</div>
+        <div id="ricerca-argomenti" class="list-group"></div>
+      </div>
+      <p class="small text-body-secondary" id="conteggio-ricerca"></p>
+      <div id="risultati-ricerca" class="list-group"></div>
     </section>
 
     <section id="argomento" class="schermata d-none">
@@ -191,6 +207,18 @@
       <button class="btn btn-sm btn-outline-secondary modifica">Modifica</button>
       <button class="btn btn-sm btn-outline-danger elimina">Elimina</button>
     </div>
+  </template>
+
+  <template id="modello-risultato">
+    <button type="button" class="list-group-item list-group-item-action py-3 text-start">
+      <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
+        <small class="text-body-secondary text-break me-auto argomento"></small>
+        <span class="d-flex gap-1 etichette"></span>
+      </div>
+      <div class="domanda"><small class="text-body-secondary">Domanda</small><div class="valore testo-carta text-break"></div></div>
+      <div class="risposta mt-2"><small class="text-body-secondary">Risposta</small><div class="valore testo-carta text-break"></div></div>
+      <div class="opzioni mt-2"><small class="text-body-secondary">Opzioni</small><div class="valore testo-carta text-break"></div></div>
+    </button>
   </template>
 
   <template id="modello-vuoto">
