@@ -108,7 +108,8 @@ app.get("/carte/:id", async (c) => {
 });
 
 app.post("/carte", async (c) => {
-  const [k] = await db(c).insert(carta).values(await c.req.json()).returning();
+  // Difficoltà 3 (neutra) se non indicata: il default della colonna nel DB è ancora 1.
+  const [k] = await db(c).insert(carta).values({ difficolta: 3, ...(await c.req.json()) }).returning();
   const [r] = await db(c).insert(ripasso).values({ id_carta: k.id_carta, prossimo_ripasso: oggi() }).returning();
   return c.json({ carta: k, ripasso: r }, 201);
 });

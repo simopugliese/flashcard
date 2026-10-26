@@ -67,6 +67,25 @@
   --bs-btn-focus-shadow-rgb: 244, 131, 48;
 }
 
+.btn-success {
+  --bs-btn-bg: var(--colore-successo);
+  --bs-btn-border-color: var(--colore-successo);
+  --bs-btn-disabled-bg: var(--colore-successo);
+  --bs-btn-disabled-border-color: var(--colore-successo);
+}
+
+/* Bootstrap usa colori fissi (blu) per caselle e focus dei campi, non le variabili. */
+.form-check-input:checked {
+  background-color: var(--colore-verde);
+  border-color: var(--colore-verde);
+}
+.form-check-input:focus,
+.form-control:focus,
+.form-select:focus {
+  border-color: #8fd0b6;
+  box-shadow: 0 0 0 .25rem var(--bs-focus-ring-color);
+}
+
 /* ---------- Layout ---------- */
 .contenuto { max-width: 720px; }
 .contenuto-largo { max-width: 1320px; } /* vista a card: dopo .contenuto, a pari specificità */
@@ -82,7 +101,7 @@
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   gap: 1rem;
 }
-.griglia-card > .col-12 { grid-column: 1 / -1; } /* messaggio di elenco vuoto */
+.griglia-card > :not(.carta-wrap) { grid-column: 1 / -1; } /* spinner e messaggio di elenco vuoto */
 
 .carta-wrap { position: relative; }
 .carta-flip { perspective: 1000px; cursor: pointer; height: 100%; border-radius: .75rem; }

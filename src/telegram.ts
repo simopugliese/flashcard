@@ -13,7 +13,7 @@ export type Env = {
 type Messaggio = { message_id: number; chat: { id: number } };
 type CallbackQuery = { id: string; from: { id: number }; data?: string; message?: Messaggio };
 
-// Le domande arrivano solo tra le 9 e le 22 (ora italiana), a distanza casuale tra 1 e 3 ore.
+// Le domande arrivano solo tra le 8 e le 23 (ora italiana), a distanza casuale tra 30 e 90 minuti.
 const ORA_INIZIO = 8;
 const ORA_FINE = 23;
 const MINUTI_MIN = 30;

@@ -79,7 +79,6 @@ async function elenco(id, percorso, disegna, vuoto, etichetta, crea, classe = "l
     const elementi = await api(percorso);
     if (elementi.length) return lista.replaceChildren(...elementi.map(disegna));
     const blocco = $("modello-vuoto").content.firstElementChild.cloneNode(true);
-    blocco.classList.add("col-12");
     blocco.querySelector(".messaggio").textContent = vuoto;
     blocco.querySelector(".crea").textContent = etichetta;
     blocco.querySelector(".crea").onclick = crea;
@@ -422,8 +421,16 @@ async function vota(voto) {
 }
 
 // Minuscolo, senza accenti e con ogni spazio ridotto a " ": mantiene la lunghezza del testo, così gli indici
-// trovati nel testo normalizzato valgono anche per quello originale (serve per evidenziare).
-const base = (s) => [...s.normalize("NFC")].map((c) => (/\s/.test(c) ? " " : c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase())).join("");
+// trovati nel testo normalizzato valgono anche per quello originale (serve per evidenziare). Un carattere che
+// cambierebbe lunghezza (emoji con U+FE0F, segni combinanti isolati, hangul) resta com'è.
+const base = (s) =>
+  [...s.normalize("NFC")]
+    .map((c) => {
+      if (/\s/.test(c)) return " ";
+      const n = c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+      return n.length === c.length ? n : c;
+    })
+    .join("");
 
 async function apriRicerca() {
   ricerca.esclusi.clear();
@@ -440,6 +447,8 @@ async function caricaRicerca() {
   const id = stato.materia.id_materia;
   const campo = $("campo-ricerca");
   campo.disabled = true;
+  ricerca.carte = [];
+  $("ricerca-argomenti").replaceChildren();
   $("conteggio-ricerca").textContent = "";
   $("risultati-ricerca").innerHTML = caricamento;
   try {

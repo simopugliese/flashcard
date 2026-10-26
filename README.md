@@ -38,7 +38,7 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 |---|---|
 | `materia` | `id_materia`, `nome_materia` |
 | `argomento` | `id_argomento`, `nome_argomento`, `id_materia` |
-| `carta` | `id_carta`, `domanda`, `risposta`, `opzioni` (JSON, facoltativo), `difficolta` (default 1), `id_argomento` |
+| `carta` | `id_carta`, `domanda`, `risposta`, `opzioni` (JSON, facoltativo), `difficolta` (default 3 se creata da API; la colonna nel DB ha ancora default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
 | `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
