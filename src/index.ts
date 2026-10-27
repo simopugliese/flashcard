@@ -32,7 +32,7 @@ app.onError((e, c) => {
   return c.json({ errore: "errore interno" }, 500);
 });
 
-app.get("/materie", async (c) => c.json(await db(c).select().from(materia)));
+app.get("/materie", async (c) => c.json(await db(c).select().from(materia).orderBy(materia.nome_materia, materia.id_materia)));
 
 app.get("/materie/:id", async (c) => {
   const [m] = await db(c).select().from(materia).where(eq(materia.id_materia, id(c)));
@@ -50,8 +50,8 @@ app.put("/materie/:id", async (c) => {
 });
 
 app.delete("/materie/:id", async (c) => {
-  await db(c).delete(materia).where(eq(materia.id_materia, id(c)));
-  return c.body(null, 204);
+  const eliminate = await db(c).delete(materia).where(eq(materia.id_materia, id(c))).returning({ id: materia.id_materia });
+  return eliminate.length ? c.body(null, 204) : c.notFound();
 });
 
 // Media pesata sui ripassi e sulla difficoltà: media_esito * numero_ripassi è la somma dei voti della carta, quindi
@@ -69,7 +69,8 @@ app.get("/materie/:id/argomenti", async (c) =>
       .leftJoin(carta, eq(carta.id_argomento, argomento.id_argomento))
       .leftJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
       .where(eq(argomento.id_materia, id(c)))
-      .groupBy(argomento.id_argomento),
+      .groupBy(argomento.id_argomento)
+      .orderBy(argomento.nome_argomento, argomento.id_argomento),
   ),
 );
 
@@ -79,7 +80,8 @@ app.get("/materie/:id/carte", async (c) =>
       .select({ ...getTableColumns(carta), nome_argomento: argomento.nome_argomento })
       .from(carta)
       .innerJoin(argomento, eq(argomento.id_argomento, carta.id_argomento))
-      .where(eq(argomento.id_materia, id(c))),
+      .where(eq(argomento.id_materia, id(c)))
+      .orderBy(carta.id_carta),
   ),
 );
 
@@ -102,8 +104,8 @@ app.put("/argomenti/:id", async (c) => {
 });
 
 app.delete("/argomenti/:id", async (c) => {
-  await db(c).delete(argomento).where(eq(argomento.id_argomento, id(c)));
-  return c.body(null, 204);
+  const eliminati = await db(c).delete(argomento).where(eq(argomento.id_argomento, id(c))).returning({ id: argomento.id_argomento });
+  return eliminati.length ? c.body(null, 204) : c.notFound();
 });
 
 app.get("/argomenti/:id/carte", async (c) =>
@@ -112,7 +114,8 @@ app.get("/argomenti/:id/carte", async (c) =>
       .select()
       .from(carta)
       .innerJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
-      .where(eq(carta.id_argomento, id(c))),
+      .where(eq(carta.id_argomento, id(c)))
+      .orderBy(carta.id_carta),
   ),
 );
 
@@ -279,8 +282,8 @@ app.put("/carte/:id", async (c) => {
 });
 
 app.delete("/carte/:id", async (c) => {
-  await db(c).delete(carta).where(eq(carta.id_carta, id(c)));
-  return c.body(null, 204);
+  const eliminate = await db(c).delete(carta).where(eq(carta.id_carta, id(c))).returning({ id: carta.id_carta });
+  return eliminate.length ? c.body(null, 204) : c.notFound();
 });
 
 app.post("/carte/:id/voto", async (c) => {

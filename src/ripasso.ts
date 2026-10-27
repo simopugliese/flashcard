@@ -28,17 +28,28 @@ export const carteDaRipassare = (d: Db, { idMateria, argomenti, modo, casuale, l
   return limite ? q.limit(limite) : q;
 };
 
-// Aggiorna il ripasso solo se nel frattempo nessun altro voto l'ha modificato:
-// restituisce undefined se il voto arriva tardi (doppio click, carta già ripassata altrove).
-export const registraVoto = async (d: Db, r: Ripasso, voto: number, difficolta: number) => {
+// Tetto all'intervallo: evita date assurde quando media e numero di ripassi crescono.
+const GIORNI_MAX = 365;
+
+// Nuovo stato del ripasso dopo un voto (funzione pura, senza accesso al database).
+export const calcolaRipasso = (r: Ripasso, voto: number, difficolta: number) => {
   const n = r.numero_ripassi + 1;
   const media = (r.media_esito * r.numero_ripassi + voto) / n;
   // La difficoltà 3 è neutra: ogni punto in meno allunga l'intervallo del 20%, ogni punto in più lo accorcia.
   const fattore = 1 + (3 - difficolta) * 0.2;
-  const giorni = voto < 3 ? 1 : Math.max(1, Math.ceil(media * n * fattore));
+  const giorni = voto < 3 ? 1 : Math.min(GIORNI_MAX, Math.max(1, Math.ceil(media * n * fattore)));
+  // Un ripasso fatto in anticipo con un buon voto non deve accorciare la scadenza già fissata.
+  const calcolato = oggi(giorni);
+  const prossimo = voto >= 3 && r.prossimo_ripasso > calcolato ? r.prossimo_ripasso : calcolato;
+  return { ultimo_ripasso: oggi(), prossimo_ripasso: prossimo, media_esito: media, numero_ripassi: n };
+};
+
+// Aggiorna il ripasso solo se nel frattempo nessun altro voto l'ha modificato:
+// restituisce undefined se il voto arriva tardi (doppio click, carta già ripassata altrove).
+export const registraVoto = async (d: Db, r: Ripasso, voto: number, difficolta: number) => {
   const [nuovo] = await d
     .update(ripasso)
-    .set({ ultimo_ripasso: oggi(), prossimo_ripasso: oggi(giorni), media_esito: media, numero_ripassi: n })
+    .set(calcolaRipasso(r, voto, difficolta))
     .where(and(eq(ripasso.id_carta, r.id_carta), eq(ripasso.numero_ripassi, r.numero_ripassi)))
     .returning();
   return nuovo as Ripasso | undefined;

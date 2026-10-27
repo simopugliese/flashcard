@@ -24,7 +24,14 @@ const opzioni = (v: unknown) => {
   if (v === null) return null;
   if (!Array.isArray(v) || v.length > 9) return errore("opzioni deve essere null o un elenco di al massimo 9 testi");
   const o = v.map((x) => testo(x, "ogni opzione", 500));
+  if (new Set(o).size !== o.length) return errore("le opzioni devono essere tutte diverse");
   return o.length ? o : null;
+};
+
+// Nel quiz le scelte si confrontano per testo: una opzione sbagliata uguale alla risposta renderebbe la carta ambigua.
+const senzaRispostaTraOpzioni = <T extends string[] | null | undefined>(risposta: string | undefined, o: T) => {
+  if (risposta !== undefined && o?.includes(risposta)) return errore("le opzioni sbagliate non possono contenere la risposta");
+  return o;
 };
 
 // Accetta solo un oggetto con i campi previsti; in modifica (parziale) ne serve almeno uno.
@@ -55,10 +62,11 @@ export const leggiModificaArgomento = (corpo: unknown) => ({
 // Senza difficoltà la carta parte da 3 (neutra): il default della colonna nel DB è ancora 1.
 export const leggiNuovaCarta = (corpo: unknown) => {
   const o = oggetto(corpo, ["domanda", "risposta", "opzioni", "difficolta", "id_argomento"]);
+  const risposta = testo(o.risposta, "risposta", 5000);
   return {
     domanda: testo(o.domanda, "domanda", 5000),
-    risposta: testo(o.risposta, "risposta", 5000),
-    opzioni: se(o.opzioni, opzioni) ?? null,
+    risposta,
+    opzioni: senzaRispostaTraOpzioni(risposta, se(o.opzioni, opzioni) ?? null),
     difficolta: se(o.difficolta, difficolta) ?? 3,
     id_argomento: id(o.id_argomento, "id_argomento"),
   };
@@ -66,10 +74,11 @@ export const leggiNuovaCarta = (corpo: unknown) => {
 
 export const leggiModificaCarta = (corpo: unknown) => {
   const o = oggetto(corpo, ["domanda", "risposta", "opzioni", "difficolta"], true);
+  const risposta = se(o.risposta, (v) => testo(v, "risposta", 5000));
   return {
     domanda: se(o.domanda, (v) => testo(v, "domanda", 5000)),
-    risposta: se(o.risposta, (v) => testo(v, "risposta", 5000)),
-    opzioni: se(o.opzioni, opzioni),
+    risposta,
+    opzioni: senzaRispostaTraOpzioni(risposta, se(o.opzioni, opzioni)),
     difficolta: se(o.difficolta, difficolta),
   };
 };
@@ -129,16 +138,21 @@ export const leggiImportazione = (corpo: unknown) => {
           carte: elenco(ao.carte, "carte", MAX_CARTE_IMPORT).map((k) => {
             if (++carte > MAX_CARTE_IMPORT) return errore(`al massimo ${MAX_CARTE_IMPORT} carte per importazione`);
             const ko = oggetto(k, ["domanda", "risposta", "opzioni", "difficolta", "ripasso"]);
+            if (ko.ripasso === undefined) return errore("ogni carta deve avere il campo ripasso");
             const ro = oggetto(ko.ripasso, ["ultimo_ripasso", "prossimo_ripasso", "media_esito", "numero_ripassi"]);
             const media = ro.media_esito;
+            const risposta = testo(ko.risposta, "risposta", 5000);
+            const ultimo = ro.ultimo_ripasso === null ? null : dataIso(ro.ultimo_ripasso, "ultimo_ripasso");
+            const prossimo = dataIso(ro.prossimo_ripasso, "prossimo_ripasso");
+            if (ultimo && ultimo > prossimo) return errore("ultimo_ripasso non può essere successivo a prossimo_ripasso");
             return {
               domanda: testo(ko.domanda, "domanda", 5000),
-              risposta: testo(ko.risposta, "risposta", 5000),
-              opzioni: se(ko.opzioni, opzioni) ?? null,
+              risposta,
+              opzioni: senzaRispostaTraOpzioni(risposta, se(ko.opzioni, opzioni) ?? null),
               difficolta: difficolta(ko.difficolta),
               ripasso: {
-                ultimo_ripasso: ro.ultimo_ripasso === null ? null : dataIso(ro.ultimo_ripasso, "ultimo_ripasso"),
-                prossimo_ripasso: dataIso(ro.prossimo_ripasso, "prossimo_ripasso"),
+                ultimo_ripasso: ultimo,
+                prossimo_ripasso: prossimo,
                 media_esito: typeof media === "number" && media >= 0 && media <= 5 ? media : errore("media_esito deve essere un numero da 0 a 5"),
                 numero_ripassi: intero(ro.numero_ripassi, "numero_ripassi", 0, 1_000_000),
               },

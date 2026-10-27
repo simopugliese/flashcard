@@ -19,7 +19,7 @@ async function api(percorso, metodo = "GET", dati) {
   if (res.status >= 500) throw new Error("Errore del server, riprova tra poco.");
   if (!res.ok) {
     const errore = await res.json().then((j) => j?.errore, () => null);
-    throw new Error(errore ? `Operazione non riuscita: ${errore}.` : "Operazione non riuscita. Controlla i dati e riprova.");
+    throw Object.assign(new Error(errore ? `Operazione non riuscita: ${errore}.` : "Operazione non riuscita. Controlla i dati e riprova."), { stato: res.status });
   }
   return res.status === 204 ? null : res.json();
 }
@@ -79,8 +79,10 @@ async function elenco(id, percorso, disegna, vuoto, etichetta, crea, classe = "l
   const lista = $(id);
   lista.className = classe;
   lista.innerHTML = caricamento;
+  const richiesta = (lista.dataset.richiesta = String(Date.now() + Math.random()));
   try {
     const elementi = await api(percorso);
+    if (lista.dataset.richiesta !== richiesta) return; // è partito un caricamento più recente
     if (elementi.length) return lista.replaceChildren(...elementi.map(disegna));
     const blocco = $("modello-vuoto").content.firstElementChild.cloneNode(true);
     blocco.querySelector(".messaggio").textContent = vuoto;
@@ -289,7 +291,8 @@ function caricaCarte() {
 
 // Le opzioni sbagliate arrivano come testo (una per riga) e partono come array, o null se assenti.
 function datiCarta(dati) {
-  const opzioni = dati.opzioni.split("\n").map((o) => o.trim()).filter(Boolean).slice(0, 9);
+  const opzioni = dati.opzioni.split("\n").map((o) => o.trim()).filter(Boolean);
+  if (opzioni.length > 9) throw new Error("Puoi inserire al massimo 9 opzioni sbagliate.");
   return { ...dati, difficolta: +dati.difficolta, opzioni: opzioni.length ? opzioni : null };
 }
 
@@ -395,7 +398,7 @@ function mostraCarta() {
   const quiz = carta.opzioni?.length;
   $("mostra-risposta").classList.toggle("d-none", !!quiz);
   $("opzioni").classList.toggle("d-none", !quiz);
-  $("opzioni").replaceChildren(...(quiz ? opzioniMescolate(carta).map((testo) => bottoneOpzione(carta, testo)) : []));
+  $("opzioni").replaceChildren(...(quiz ? [...opzioniMescolate(carta).map((testo) => bottoneOpzione(carta, testo)), bottoneNonLoSo(carta)] : []));
   window.scrollTo(0, 0);
 }
 
@@ -423,6 +426,19 @@ function bottoneOpzione(carta, testo) {
   return b;
 }
 
+function bottoneNonLoSo(carta) {
+  const b = document.createElement("button");
+  b.className = "btn btn-link";
+  b.textContent = "Non lo so";
+  b.onclick = () => {
+    const bottoni = [...$("opzioni").children];
+    bottoni.forEach((x) => (x.disabled = true));
+    bottoni.filter((x) => x.textContent === carta.risposta).forEach((x) => x.classList.replace("btn-outline-secondary", "btn-success"));
+    mostraRisposta();
+  };
+  return b;
+}
+
 function mostraRisposta() {
   $("blocco-risposta").classList.remove("d-none");
   $("voti").classList.remove("d-none");
@@ -431,10 +447,28 @@ function mostraRisposta() {
 
 async function vota(voto) {
   const { carta } = stato.coda[stato.indice];
-  if (!(await esegui($("voti"), $("avviso-voto"), () => api(`/carte/${carta.id_carta}/voto`, "POST", { voto })))) return;
+  let saltata = false;
+  const ok = await esegui($("voti"), $("avviso-voto"), async () => {
+    try {
+      await api(`/carte/${carta.id_carta}/voto`, "POST", { voto });
+    } catch (e) {
+      if (e.stato !== 409) throw e;
+      saltata = true; // già ripassata altrove: si passa alla successiva
+    }
+  });
+  if (!ok) return;
+  avanza();
+  if (saltata) avviso("La carta precedente era già stata ripassata altrove: voto non registrato.", "info");
+}
+
+function avanza() {
   stato.indice++;
   if (stato.indice < stato.coda.length) mostraCarta();
   else mostra("fine");
+}
+
+function esciSessione() {
+  if (stato.indice === 0 || confirm("Uscire dalla sessione? I voti già dati restano salvati.")) mostra("ripasso");
 }
 
 // Minuscolo, senza accenti e con ogni spazio ridotto a " ": mantiene la lunghezza del testo, così gli indici
@@ -584,7 +618,7 @@ function esporta() {
     if (!res.ok) throw new Error("Esportazione non riuscita.");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(await res.blob());
-    link.download = `flashcard-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `flashcard-${new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format()}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   });

@@ -1,5 +1,5 @@
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { argomento, carta, invio_telegram, materia, ripasso } from "./schema";
 import { carteDaRipassare, registraVoto } from "./ripasso";
 
@@ -25,7 +25,7 @@ const tg = async (env: Env, metodo: string, body: object) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const j = await r.json<{ ok: boolean; description?: string }>();
+  const j = await r.json<{ ok: boolean; description?: string }>().catch(() => ({ ok: false, description: `risposta non valida (HTTP ${r.status})` }));
   if (!j.ok) throw new Error(`Telegram ${metodo}: ${j.description}`);
 };
 
@@ -103,24 +103,33 @@ const inviaCarta = (env: Env, k: CartaCompleta) => {
     chat_id: env.TELEGRAM_CHAT_ID,
     text: testoDomanda(k),
     parse_mode: "HTML",
-    reply_markup: { inline_keyboard: [bottoni] },
+    reply_markup: { inline_keyboard: righe(bottoni, 5) },
   });
 };
+
+// Telegram limita il numero di bottoni per riga (8): con molte opzioni si va a capo.
+const righe = <T>(v: T[], per: number) => Array.from({ length: Math.ceil(v.length / per) }, (_, i) => v.slice(i * per, (i + 1) * per));
 
 const oraItaliana = (t: number) =>
   Number(new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "numeric", hourCycle: "h23" }).format(t));
 
 export const invioProgrammato = async (env: Env) => {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
   const d = drizzle(env.DB);
   const adesso = Date.now();
   const [stato] = await d.select().from(invio_telegram).where(eq(invio_telegram.id, 1));
   if (stato && adesso < stato.prossimo_invio) return;
 
+  // Si "prenota" l'invio con una scrittura condizionale: se due esecuzioni si sovrappongono, solo una prosegue.
   const prossimo = Math.round(adesso + (MINUTI_MIN + Math.random() * (MINUTI_MAX - MINUTI_MIN)) * 60000);
-  await d
-    .insert(invio_telegram)
-    .values({ id: 1, prossimo_invio: prossimo })
-    .onConflictDoUpdate({ target: invio_telegram.id, set: { prossimo_invio: prossimo } });
+  const [prenotato] = stato
+    ? await d
+        .update(invio_telegram)
+        .set({ prossimo_invio: prossimo })
+        .where(and(eq(invio_telegram.id, 1), eq(invio_telegram.prossimo_invio, stato.prossimo_invio)))
+        .returning()
+    : await d.insert(invio_telegram).values({ id: 1, prossimo_invio: prossimo }).onConflictDoNothing().returning();
+  if (!prenotato) return;
 
   const ora = oraItaliana(adesso);
   if (ora < ORA_INIZIO || ora >= ORA_FINE) return;
@@ -184,6 +193,7 @@ export const gestisciUpdate = async (env: Env, update: { callback_query?: Callba
   try {
     avviso = await gestisciClick(env, q.data ?? "", q.message);
   } finally {
-    await tg(env, "answerCallbackQuery", { callback_query_id: q.id, text: avviso });
+    // Se la risposta al click fallisce non deve nascondere l'errore originale.
+    await tg(env, "answerCallbackQuery", { callback_query_id: q.id, text: avviso }).catch(console.error);
   }
 };
