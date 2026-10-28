@@ -13,6 +13,8 @@ flashcard/
 ├── src/
 │   ├── schema.ts        tabelle del database (Drizzle ORM)
 │   ├── index.ts         tutte le API (Hono) e punto d'ingresso del Worker
+│   ├── materiali.ts     API dei materiali (note e file) e pulizia dei file orfani in R2
+│   ├── validazione.ts   controlli sui body delle richieste e limiti dei materiali
 │   ├── ripasso.ts       carte da ripassare e registrazione del voto, usate da API e bot
 │   └── telegram.ts      bot Telegram: invio programmato e gestione dei click
 ├── public/
@@ -20,11 +22,12 @@ flashcard/
 │   └── app.js           logica del frontend (JavaScript puro)
 ├── drizzle/             migrazioni SQL generate da drizzle-kit
 ├── drizzle.config.ts
-├── wrangler.jsonc       configurazione Worker, dominio, cron, asset statici e D1
+├── wrangler.jsonc       configurazione Worker, dominio, cron, asset statici, D1 e R2
 └── package.json
 ```
 
 - **Backend:** TypeScript, [Hono](https://hono.dev) per il routing, [Drizzle ORM](https://orm.drizzle.team) per le query su **Cloudflare D1** (SQLite).
+- **File:** i file dei materiali stanno in **Cloudflare R2** (binding `FILES`); in D1 restano solo i metadati.
 - **Frontend:** HTML, JavaScript puro e Bootstrap 5, senza build. È un'unica pagina che mostra una schermata alla volta.
 - **Instradamento:** le richieste che corrispondono a un file in `public/` (es. `/`, `/app.js`) sono servite come asset statici; tutte le altre arrivano a Hono. Il frontend chiama le API con percorsi relativi, quindi non serve CORS.
 
@@ -32,6 +35,8 @@ flashcard/
 
 ```
 Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
+                     │               │
+                     └── N Materiale ┘   (di un argomento oppure di una carta)
 ```
 
 | Tabella | Campi |
@@ -40,9 +45,10 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 | `argomento` | `id_argomento`, `nome_argomento`, `id_materia` |
 | `carta` | `id_carta`, `domanda`, `risposta`, `opzioni` (JSON, facoltativo), `difficolta` (default 3 se creata da API; la colonna nel DB ha ancora default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
+| `materiale` | `id_materiale`, `tipo` (`testo` o `file`), `titolo`, `testo`, `testo_render` (riservato al LaTeX renderizzato, per ora sempre `null`), `hash`, `mime`, `dimensione`, `id_argomento` **oppure** `id_carta` (esattamente uno dei due, imposto da un vincolo CHECK), `creato_il` (millisecondi) |
 | `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
-- Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte e i dati di ripasso.
+- Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte, i materiali e i dati di ripasso. I file rimasti senza materiali vengono tolti anche da R2 (vedi [Materiali](#materiali)).
 - Il ripasso viene creato automaticamente insieme alla carta, con `prossimo_ripasso` = oggi.
 - Le date sono stringhe `YYYY-MM-DD` in UTC.
 
@@ -80,9 +86,29 @@ Nella pagina di una materia il pulsante **Cerca** apre una schermata che cerca n
 - **Filtro per argomento:** le caselle sotto il campo escludono gli argomenti non selezionati.
 - Si mostrano al massimo 100 risultati (costante `MAX_RISULTATI` in `public/app.js`); oltre, la schermata invita ad affinare la ricerca. Cliccando un risultato si apre la modifica della carta.
 
+### Materiali
+
+Ad **argomenti** e **carte** si possono collegare materiali di studio: **note** di testo (anche con formule LaTeX, scritte come testo) e **file**. Il materiale di un argomento serve per i contenuti grandi e condivisi da più carte; quello di una carta per ciò che riguarda solo lei.
+
+- **Archiviazione:** i byte dei file stanno in R2, la riga in D1 contiene solo i metadati. La chiave dell'oggetto è lo **SHA-256 del contenuto**, quindi lo stesso file caricato più volte occupa un solo oggetto. Quando l'ultimo materiale che lo usa viene eliminato (direttamente o a cascata, eliminando carta, argomento o materia) il file viene tolto da R2.
+- **Tipi ammessi:** PNG, JPEG, GIF, WebP, PDF e testo semplice. SVG e HTML sono esclusi di proposito, perché potrebbero eseguire codice nel browser. Il tipo dichiarato dal client non basta: il server controlla anche i primi byte del file.
+- **Download:** `GET /materiali/:id/file` restituisce il file con `X-Content-Type-Options: nosniff` e una `Content-Security-Policy` restrittiva. Le immagini si aprono nel browser, gli altri tipi si scaricano.
+- **Limiti** (costanti in cima al blocco "Limiti dei materiali" di `src/validazione.ts`):
+
+  | Limite | Valore |
+  |---|---|
+  | Dimensione di un file | 2 MB |
+  | File per carta | 3 |
+  | File per argomento | 150 (conta solo i file dell'argomento stesso, non quelli delle sue carte) |
+  | Lunghezza di una nota | 20 000 caratteri |
+  | Lunghezza del titolo | 100 caratteri |
+
+  Le note di testo non hanno un limite di numero e non c'è un tetto sullo spazio totale in R2: per i costi si usa l'allerta di budget di Cloudflare.
+- **Stato:** per ora c'è solo il backend. L'interfaccia, il LaTeX renderizzato, le spiegazioni e l'inclusione nell'esportazione sono i passi successivi.
+
 ## API
 
-Tutte le richieste e risposte sono in JSON.
+Tutte le richieste e risposte sono in JSON, tranne il caricamento di un file (`multipart/form-data`) e il suo download.
 
 | Metodo | Percorso | Body | Risposta |
 |---|---|---|---|
@@ -102,18 +128,25 @@ Tutte le richieste e risposte sono in JSON.
 | POST | `/carte` | `{ domanda, risposta, id_argomento, opzioni?, difficolta? }` | `{ carta, ripasso }` (201) |
 | PUT | `/carte/:id` | almeno uno tra `domanda`, `risposta`, `opzioni`, `difficolta` | carta aggiornata |
 | DELETE | `/carte/:id` | – | 204 |
+| GET | `/argomenti/:id/materiali` | – | materiali dell'argomento (404 se non esiste) |
+| GET | `/carte/:id/materiali` | – | materiali della carta (404 se non esiste) |
+| POST | `/argomenti/:id/materiali`, `/carte/:id/materiali` | **nota:** JSON `{ testo, titolo? }`. **File:** `multipart/form-data` con campo `file` e `titolo` facoltativo (se manca si usa il nome del file) | materiale creato (201). 413 se il file supera i 2 MB, 400 per tipo non ammesso o limite per carta/argomento raggiunto |
+| PUT | `/materiali/:id` | almeno uno tra `titolo` (vuoto = nessun titolo) e `testo` (solo per le note) | materiale aggiornato |
+| DELETE | `/materiali/:id` | – | 204; il file va via da R2 se nessun altro materiale lo usa |
+| GET | `/materiali/:id/file` | – | il file (404 per le note) |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID`, `modo=scadenza\|anticipo\|tutte` (default `scadenza`), `casuale=0\|1`, `limite=1..500` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
 | GET | `/esporta` | — | archivio JSON (`versione: 1`, materie → argomenti → carte con dati di ripasso), scaricabile |
 | POST | `/importa` | archivio JSON nel formato di `/esporta`; `?azzera=1` riporta i ripassi a zero | `{ materie, argomenti, carte, saltate }`: i record **nuovi** creati e le carte già presenti saltate. Materie e argomenti con lo stesso nome si riusano, le carte con stessa domanda e risposta nello stesso argomento si saltano: reimportare lo stesso file non cambia nulla. Atomico: in caso di errore non scrive niente (409 se i dati cambiano durante l'importazione). Max 5000 carte |
 | POST | `/telegram/webhook` | update di Telegram | 200 (401 senza il secret corretto) |
 
-Validazione dei body: si accettano solo i campi elencati (un campo in più, anche solo scritto male, dà 400). `nome_materia` e `nome_argomento` sono testi non vuoti fino a 100 caratteri, `domanda` e `risposta` fino a 5000; `opzioni` è `null` o un elenco di al massimo 9 testi; `difficolta` è un intero da 1 a 5 (3 se omessa). Gli spazi iniziali e finali vengono tolti. In modifica non si possono cambiare `id_materia` e `id_argomento`.
+Validazione dei body: si accettano solo i campi elencati (un campo in più, anche solo scritto male, dà 400). `nome_materia` e `nome_argomento` sono testi non vuoti fino a 100 caratteri, `domanda` e `risposta` fino a 5000; `opzioni` è `null` o un elenco di al massimo 9 testi; `difficolta` è un intero da 1 a 5 (3 se omessa). Gli spazi iniziali e finali vengono tolti. In modifica non si possono cambiare `id_materia` e `id_argomento`. Per i materiali valgono i limiti della sezione [Materiali](#materiali).
 
 Errori:
 - `400` con `{ "errore": "messaggio" }`: dati non validi, id non numerico, JSON malformato o riferimenti inesistenti;
 - `404` (testo semplice): risorsa non trovata;
-- `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto;
+- `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto, oppure esiste già un elemento con lo stesso nome;
+- `413` con `{ "errore": "messaggio" }`: file oltre il limite di dimensione;
 - `500` con `{ "errore": "errore interno" }`: errore imprevisto, il dettaglio finisce nei log del Worker.
 
 Esempio:
@@ -148,11 +181,16 @@ Per provare l'invio delle domande serve il file `.dev.vars` (vedi [Configurazion
    ```
 3. Copia il `database_id` restituito in `wrangler.jsonc`, al posto di `"local"`, poi fai commit e push della modifica. L'ID non è un segreto.
    Nello stesso file, in `routes`, metti il tuo dominio (deve essere gestito da Cloudflare): il Worker viene pubblicato come custom domain e l'indirizzo `workers.dev` resta disattivato.
-4. Crea le tabelle nel database remoto:
+4. Crea il bucket R2 per i file dei materiali (il nome deve coincidere con `bucket_name` in `wrangler.jsonc`). R2 non richiede secret: il Worker lo raggiunge tramite il binding `FILES`. Il bucket resta privato, non attivare l'accesso pubblico (`r2.dev` o dominio):
+   ```bash
+   npx wrangler r2 bucket create flashcard-files
+   ```
+   Su Cloudflare conviene impostare un'allerta di budget per R2 (*Notifications*): non esiste un tetto di spesa rigido.
+5. Crea le tabelle nel database remoto:
    ```bash
    npm run db:migrate:remote
    ```
-5. Pubblica il Worker, che contiene API, frontend e bot:
+6. Pubblica il Worker, che contiene API, frontend e bot:
    ```bash
    npm run deploy
    ```
