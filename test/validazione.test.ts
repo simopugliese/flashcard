@@ -92,11 +92,19 @@ describe("leggiImportazione", () => {
   });
   const archivio = (k: object) => ({ versione: 1, materie: [{ nome_materia: "M", argomenti: [{ nome_argomento: "A", carte: [k] }] }] });
 
-  it("accetta un archivio valido", () => {
-    expect(leggiImportazione(archivio(carta())).materie[0].argomenti[0].carte).toHaveLength(1);
+  it("accetta un archivio v1 e lo completa senza materiali né spiegazione", () => {
+    const [a] = leggiImportazione(archivio(carta())).materie[0].argomenti;
+    expect(a.materiali).toEqual([]);
+    expect(a.carte).toHaveLength(1);
+    expect(a.carte[0]).toMatchObject({ materiali: [], spiegazione: null });
+  });
+  it("in v1 non accetta materiali né spiegazioni", () => {
+    expect(errore(() => leggiImportazione(archivio(carta({ materiali: [] }))))).toMatch(/campi non previsti/);
+    const v1 = { versione: 1, materie: [{ nome_materia: "M", argomenti: [{ nome_argomento: "A", materiali: [], carte: [] }] }] };
+    expect(errore(() => leggiImportazione(v1))).toMatch(/campi non previsti/);
   });
   it("rifiuta versioni sconosciute", () => {
-    expect(errore(() => leggiImportazione({ versione: 2, materie: [] }))).toMatch(/versione/);
+    expect(errore(() => leggiImportazione({ versione: 3, materie: [] }))).toMatch(/versione/);
   });
   it("rifiuta date inesistenti", () => {
     const ripasso = { ultimo_ripasso: null, prossimo_ripasso: "2026-02-31", media_esito: 0, numero_ripassi: 0 };
@@ -113,6 +121,71 @@ describe("leggiImportazione", () => {
   it("rifiuta media fuori scala", () => {
     const ripasso = { ultimo_ripasso: null, prossimo_ripasso: "2026-03-10", media_esito: 7, numero_ripassi: 0 };
     expect(errore(() => leggiImportazione(archivio(carta({ ripasso }))))).toMatch(/media_esito/);
+  });
+});
+
+describe("leggiImportazione v2", () => {
+  const hash = "a".repeat(64);
+  const nota = (id: number, o: object = {}) => ({ id, tipo: "testo", titolo: "N", testo: "$x$", creato_il: 1, ...o });
+  const file = (id: number, o: object = {}) => ({ id, tipo: "file", titolo: "F", hash, mime: "image/png", dimensione: 10, creato_il: 1, ...o });
+  const spiegazione = (o: object = {}) => ({ testo: "S", fonte: "ai", modello: "m", materiali: [1, 2], obsoleta: false, creata_il: 1, ...o });
+  const carta = (o: object = {}) => ({
+    domanda: "D",
+    risposta: "R",
+    opzioni: null,
+    difficolta: 3,
+    ripasso: { ultimo_ripasso: null, prossimo_ripasso: "2026-03-10", media_esito: 0, numero_ripassi: 0 },
+    materiali: [file(2)],
+    spiegazione: spiegazione(),
+    ...o,
+  });
+  const archivio = (carte: object[], materiali: object[] = [nota(1)]) => ({
+    versione: 2,
+    materie: [{ nome_materia: "M", argomenti: [{ nome_argomento: "A", materiali, carte }] }],
+  });
+
+  it("accetta materiali e spiegazioni che usano quelli della carta e dell'argomento", () => {
+    const [a] = leggiImportazione(archivio([carta()])).materie[0].argomenti;
+    expect(a.materiali).toEqual([{ id: 1, tipo: "testo", titolo: "N", testo: "$x$", creato_il: 1 }]);
+    expect(a.carte[0].materiali[0]).toMatchObject({ id: 2, tipo: "file", hash, mime: "image/png", dimensione: 10 });
+    expect(a.carte[0].spiegazione).toMatchObject({ fonte: "ai", modello: "m", materiali: [1, 2], obsoleta: false });
+  });
+  it("materiali e spiegazione sono facoltativi; un titolo di soli spazi diventa null", () => {
+    const [a] = leggiImportazione(archivio([carta({ materiali: undefined, spiegazione: undefined })], [nota(1, { titolo: "  " })])).materie[0].argomenti;
+    expect(a.materiali[0].titolo).toBeNull();
+    expect(a.carte[0]).toMatchObject({ materiali: [], spiegazione: null });
+  });
+  it("rifiuta file con hash, tipo o dimensione non validi", () => {
+    expect(errore(() => leggiImportazione(archivio([carta({ materiali: [file(2, { hash: "abc" })] })])))).toMatch(/hash/);
+    expect(errore(() => leggiImportazione(archivio([carta({ materiali: [file(2, { mime: "image/svg+xml" })] })])))).toMatch(/mime/);
+    expect(errore(() => leggiImportazione(archivio([carta({ materiali: [file(2, { dimensione: MAX_FILE_BYTES + 1 })] })])))).toMatch(/dimensione/);
+  });
+  it("accetta solo i campi del tipo di materiale, niente HTML", () => {
+    expect(errore(() => leggiImportazione(archivio([carta()], [file(1, { testo: "x" })])))).toMatch(/campi non previsti/);
+    expect(errore(() => leggiImportazione(archivio([carta()], [nota(1, { testo: undefined })])))).toMatch(/testo/);
+    expect(errore(() => leggiImportazione(archivio([carta()], [nota(1, { testo_render: "<b>x</b>" })])))).toMatch(/campi non previsti/);
+    expect(errore(() => leggiImportazione(archivio([carta({ domanda_render: "<script>" })])))).toMatch(/campi non previsti/);
+    expect(errore(() => leggiImportazione(archivio([carta()], [{ id: 1, tipo: "link" }])))).toMatch(/tipo/);
+  });
+  it("rifiuta id dei materiali ripetuti nell'archivio", () => {
+    expect(errore(() => leggiImportazione(archivio([carta({ materiali: [file(1)] })])))).toMatch(/ripetuto/);
+  });
+  it("la spiegazione può usare solo materiali della sua carta o del suo argomento", () => {
+    expect(errore(() => leggiImportazione(archivio([carta({ spiegazione: spiegazione({ materiali: [9] }) })])))).toMatch(/materiali/);
+    const altra = carta({ domanda: "D2", materiali: [file(3)], spiegazione: spiegazione({ materiali: [2] }) });
+    expect(errore(() => leggiImportazione(archivio([carta(), altra])))).toMatch(/materiali/);
+  });
+  it("rifiuta più di 3 file per carta", () => {
+    const materiali = [2, 3, 4, 5].map((id) => file(id));
+    expect(errore(() => leggiImportazione(archivio([carta({ materiali, spiegazione: null })])))).toMatch(/3 file per carta/);
+  });
+  it("controlla fonte, modello e obsoleta della spiegazione", () => {
+    expect(errore(() => leggiImportazione(archivio([carta({ spiegazione: spiegazione({ fonte: "boh" }) })])))).toMatch(/fonte/);
+    expect(errore(() => leggiImportazione(archivio([carta({ spiegazione: spiegazione({ fonte: "manuale" }) })])))).toMatch(/modello/);
+    expect(errore(() => leggiImportazione(archivio([carta({ spiegazione: spiegazione({ obsoleta: "no" }) })])))).toMatch(/obsoleta/);
+    expect(leggiImportazione(archivio([carta({ spiegazione: spiegazione({ fonte: "manuale", modello: null }) })])).materie[0].argomenti[0].carte[0].spiegazione?.fonte).toBe(
+      "manuale",
+    );
   });
 });
 

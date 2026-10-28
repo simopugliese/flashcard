@@ -113,7 +113,7 @@ Ad **argomenti** e **carte** si possono collegare materiali di studio: **note** 
   Le note di testo non hanno un limite di numero e non c'è un tetto sullo spazio totale in R2: per i costi si usa l'allerta di budget di Cloudflare.
 - **Nell'app:** i materiali dell'argomento stanno in fondo alla sua pagina, quelli della carta nella finestra di modifica della carta (per una carta nuova, dopo averla salvata). Le immagini hanno un'anteprima e si aprono in una nuova scheda; le note si espandono mostrando le formule. Aggiunte, modifiche ed eliminazioni si salvano subito, indipendentemente dal pulsante Salva della carta.
 - **Immagini ridotte nel browser:** prima dell'invio, un'immagine oltre i 2 MB o con il lato lungo oltre 1600 px viene ridimensionata a 1600 px e ricompressa in WebP (JPEG se il browser non sa produrre WebP), così rientra quasi sempre nel limite. Le immagini già piccole partono intatte, per non perdere nitidezza su schemi e testo; le GIF restano com'è perché possono essere animate. Anche le foto HEIC dell'iPhone vengono convertite, se il browser sa leggerle. I PDF oltre il limite vengono rifiutati subito, senza inviarli. Costanti `MAX_FILE_BYTES` e `LATO_MAX_IMMAGINE` in cima a `public/app.js`.
-- **Stato:** l'inclusione dei materiali nell'esportazione è il passo successivo.
+- **Backup:** l'esportazione include note e metadati dei file, non i loro byte (vedi [Esportazione e importazione](#esportazione-e-importazione)).
 
 ### LaTeX
 
@@ -121,7 +121,7 @@ Nelle domande, nelle risposte e nelle note le formule si scrivono tra `$...$` (i
 
 - Il testo fuori dalle formule viene escapato (niente HTML dall'utente) e gli a capo diventano `<br>`. KaTeX gira con `trust: false`.
 - Frasi come «costa $5 e $6» restano testo: l'apertura non ha spazio dopo, la chiusura non ha spazio prima né una cifra dopo. Al massimo 200 formule per testo.
-- L'importazione rigenera sempre l'HTML; l'esportazione (versione 1) non lo include.
+- L'esportazione non include l'HTML e l'importazione lo rigenera sempre: un archivio non può introdurre HTML proprio.
 - **Carte esistenti:** finché `*_render` è `null` il frontend mostra il testo grezzo. Per calcolarlo, dopo il deploy, ripeti `POST /rirenderizza` (100 elementi per chiamata) finché `rimaste` è 0:
 
   ```bash
@@ -143,7 +143,7 @@ Ogni carta può avere **una spiegazione**, scritta a mano oppure generata dall'A
 - **Obsoleta:** al salvataggio si calcola un'`impronta` (SHA-256 di domanda, risposta e contenuto dei materiali usati). Se poi la carta o uno di quei materiali cambia, o un materiale viene eliminato, le risposte riportano `obsoleta: true`: la spiegazione resta visibile e si può rigenerare.
 - **Sicurezza del prompt:** carta e materiali arrivano al modello tra tag (`<carta>`, `<materiale>`) con `<`, `>`, `&` escapati, e il prompt di sistema dice di trattarli solo come dati, ignorando eventuali istruzioni contenute. Il testo restituito passa da `rendi` come tutto il resto (niente HTML dal modello).
 - **Senza AI:** `POST /carte/:id/spiegazione/prompt` restituisce il prompt già pronto da incollare in una chat qualsiasi (gli allegati sono elencati da aggiungere a mano); la risposta si salva con `PUT /carte/:id/spiegazione`. Così l'app funziona anche senza provider configurato.
-- **Quando si chiama l'AI:** solo da `POST /carte/:id/spiegazione/genera`. Mai dal cron né da Telegram.
+- **Quando si chiama l'AI:** solo da `POST /carte/:id/spiegazione/genera`. Mai dal cron né da Telegram: il bot mostra solo la spiegazione già salvata (vedi [Bot Telegram](#bot-telegram)).
 - **Nell'app:** nel ripasso la spiegazione compare sotto la risposta, appena la si mostra (si legge solo quella salvata, senza chiamare l'AI). Nella vista a card si apre con il pulsante **?** della carta. I pulsanti sono *Genera con AI* (*Rigenera* se esiste già; nascosto se l'AI non è configurata), *Scrivi a mano* (*Modifica*) e *Copia prompt*. Ognuno apre prima un riquadro di conferma con i materiali da usare, quelli della carta già spuntati e quelli dell'argomento no: nessuna chiamata AI parte con un solo clic. Rigenerare una spiegazione scritta a mano chiede conferma. *Copia prompt* mette il prompt negli appunti (se il browser non lo permette, lo mostra da copiare), elenca gli allegati da aggiungere a mano e apre il campo dove incollare la risposta della chat esterna.
 - **Limiti** (costanti in cima a `src/ai.ts`; il numero di materiali è in `src/validazione.ts`):
 
@@ -176,6 +176,31 @@ Il provider si sceglie con le variabili del Worker. Senza `AI_PROVIDER` la funzi
   npx wrangler secret put AI_BASE_URL   # solo con openai
   ```
   In locale vanno in `.dev.vars`. Per spegnere l'AI: `npx wrangler secret delete AI_PROVIDER`.
+
+### Esportazione e importazione
+
+`GET /esporta` scarica tutto in un file JSON (pulsante *Esporta archivio* nella home); `POST /importa` lo unisce ai dati presenti (pulsante *Importa archivio*).
+
+```
+{ versione: 2, materie: [{ nome_materia, argomenti: [{
+    nome_argomento,
+    materiali: [materiale],
+    carte: [{ domanda, risposta, opzioni, difficolta,
+              ripasso: { ultimo_ripasso, prossimo_ripasso, media_esito, numero_ripassi },
+              materiali: [materiale],
+              spiegazione: { testo, fonte, modello, materiali, obsoleta, creata_il } | null }] }] }] }
+
+materiale = { id, tipo: "testo", titolo, testo, creato_il }
+          | { id, tipo: "file", titolo, hash, mime, dimensione, creato_il }
+```
+
+- **Niente id né HTML:** materie, argomenti, carte e materiali ricevono id nuovi all'importazione. L'`id` dei materiali serve solo ai riferimenti di `spiegazione.materiali` dentro il file, che vengono rimappati sui materiali nuovi. L'HTML del [LaTeX](#latex) non c'è: si ricalcola sempre.
+- **File:** l'archivio contiene i metadati e l'hash, non i byte. All'importazione un file si riaggancia solo se un oggetto con quell'hash è già in R2 (lo stesso Worker, o un file caricato di nuovo); altrimenti il materiale viene saltato ed elencato in `file_mancanti`, e l'app avvisa di ricaricarlo a mano. Un backup completo dei file (zip) non c'è.
+- **Doppioni:** materie e argomenti con lo stesso nome si riusano; le carte con stessa domanda e risposta nello stesso argomento si saltano, insieme ai loro materiali e alla spiegazione; i materiali di un argomento già presenti (stesso tipo, titolo e contenuto) non si duplicano. Reimportare lo stesso file non cambia nulla.
+- **Spiegazioni obsolete:** l'impronta si ricalcola con i materiali nuovi. Una spiegazione che era obsoleta all'esportazione, o che usava un file saltato, resta obsoleta.
+- **Versione 1:** gli archivi precedenti (solo carte e ripassi, senza `materiali` né `spiegazione`) si importano ancora.
+- **Limiti:** 5000 carte e 5000 materiali per importazione, gli stessi limiti di file per carta e per argomento dei [Materiali](#materiali) (contando anche i file già presenti nell'argomento), testo di una spiegazione fino a 100 000 caratteri. Campi sconosciuti (anche `domanda_render` e simili) danno 400.
+- **Atomica:** tutto entra in un solo batch D1; in caso di errore non si scrive niente.
 
 ## API
 
@@ -212,8 +237,8 @@ Tutte le richieste e risposte sono in JSON, tranne il caricamento di un file (`m
 | POST | `/rirenderizza` | – | `{ rinnovate, rimaste }`: calcola l'HTML LaTeX di carte e note che non ce l'hanno (max 100 per chiamata, idempotente), vedi [LaTeX](#latex) |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID`, `modo=scadenza\|anticipo\|tutte` (default `scadenza`), `casuale=0\|1`, `limite=1..500` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
-| GET | `/esporta` | — | archivio JSON (`versione: 1`, materie → argomenti → carte con dati di ripasso), scaricabile |
-| POST | `/importa` | archivio JSON nel formato di `/esporta`; `?azzera=1` riporta i ripassi a zero | `{ materie, argomenti, carte, saltate }`: i record **nuovi** creati e le carte già presenti saltate. Materie e argomenti con lo stesso nome si riusano, le carte con stessa domanda e risposta nello stesso argomento si saltano: reimportare lo stesso file non cambia nulla. Atomico: in caso di errore non scrive niente (409 se i dati cambiano durante l'importazione). Max 5000 carte |
+| GET | `/esporta` | — | archivio JSON (`versione: 2`: materie → argomenti → carte con ripasso, materiali e spiegazione), scaricabile. Vedi [Esportazione e importazione](#esportazione-e-importazione) |
+| POST | `/importa` | archivio JSON nel formato di `/esporta` (versione 1 o 2); `?azzera=1` riporta i ripassi a zero | `{ materie, argomenti, carte, saltate, materiali, spiegazioni, file_mancanti }`: i record **nuovi** creati, le carte già presenti saltate e i file non trovati in R2 (`[{ argomento, carta, titolo, hash }]`, `carta` è la domanda o `null` per i materiali dell'argomento). Reimportare lo stesso file non cambia nulla. Atomico: in caso di errore non scrive niente (409 se i dati cambiano durante l'importazione). Max 5000 carte e 5000 materiali |
 | POST | `/telegram/webhook` | update di Telegram | 200 (401 senza il secret corretto) |
 
 Validazione dei body: si accettano solo i campi elencati (un campo in più, anche solo scritto male, dà 400). `nome_materia` e `nome_argomento` sono testi non vuoti fino a 100 caratteri, `domanda` e `risposta` fino a 5000; `opzioni` è `null` o un elenco di al massimo 9 testi; `difficolta` è un intero da 1 a 5 (3 se omessa). Gli spazi iniziali e finali vengono tolti. In modifica non si possono cambiare `id_materia` e `id_argomento`. Per i materiali valgono i limiti della sezione [Materiali](#materiali).
@@ -283,6 +308,7 @@ Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo 
 - **Modifiche al database:** prima applica le migrazioni, poi pubblica (vedi [Modificare il database](#modificare-il-database)).
 - **Dopo l'aggiornamento che introduce il [LaTeX](#latex):** `npm run db:migrate:remote`, poi `npm run deploy`, poi `POST /rirenderizza` fino a `rimaste: 0` (dalla console del browser, vedi [LaTeX](#latex)).
 - **Dopo l'aggiornamento che introduce le [Spiegazioni](#spiegazioni):** `npm run db:migrate:remote`, poi `npm run deploy`. L'AI resta spenta finché non imposti i secret del [provider](#provider-ai).
+- **Esportazione versione 2 e pulsante Spiegazione su Telegram:** nessuna migrazione, basta `npm run deploy`.
 
 ### Proteggere l'accesso
 
@@ -301,7 +327,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<dominio>/telegram/webh
 
 ## Bot Telegram
 
-Tra le **8 e le 23** (ora italiana), a distanza casuale tra **30 e 90 minuti**, il bot invia una carta scelta a caso tra quelle da ripassare, con probabilità proporzionale alla difficoltà (una carta di difficoltà 5 esce cinque volte più spesso di una di difficoltà 1). Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Se la carta ha delle `opzioni` (risposte sbagliate), diventa a scelta multipla: la domanda arriva con le opzioni A, B, C… mescolate e al posto di *Vedi risposta* ci sono i bottoni con le lettere; dopo la scelta il messaggio segna quella giusta (✅) e quella sbagliata (❌) e mostra i bottoni **0–5**. Il voto resta sempre manuale. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
+Tra le **8 e le 23** (ora italiana), a distanza casuale tra **30 e 90 minuti**, il bot invia una carta scelta a caso tra quelle da ripassare, con probabilità proporzionale alla difficoltà (una carta di difficoltà 5 esce cinque volte più spesso di una di difficoltà 1). Sotto la domanda c'è il bottone **Vedi risposta**; premendolo il messaggio mostra la risposta e i bottoni **0–5**, e il voto viene registrato come dall'app web. Se la carta ha delle `opzioni` (risposte sbagliate), diventa a scelta multipla: la domanda arriva con le opzioni A, B, C… mescolate e al posto di *Vedi risposta* ci sono i bottoni con le lettere; dopo la scelta il messaggio segna quella giusta (✅) e quella sbagliata (❌) e mostra i bottoni **0–5**. Il voto resta sempre manuale. Se la carta ha già una [spiegazione](#spiegazioni) salvata, sotto i voti compare anche **💡 Spiegazione**: la spiegazione arriva in un messaggio a parte, in risposta a quello della carta (testo grezzo, LaTeX compreso, troncato a 3800 caratteri), e il pulsante sparisce lasciando i voti. Il bot non genera mai spiegazioni né chiama l'AI. Orari e frequenza si cambiano con le costanti in cima a `src/telegram.ts`.
 
 Funzionamento:
 - il cron gira ogni 10 minuti e invia solo quando è passato l'orario salvato in `invio_telegram.prossimo_invio`, poi ne sceglie uno nuovo;

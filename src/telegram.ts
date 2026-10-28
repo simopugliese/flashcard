@@ -1,6 +1,6 @@
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { and, eq } from "drizzle-orm";
-import { argomento, carta, invio_telegram, materia, ripasso } from "./schema";
+import { argomento, carta, invio_telegram, materia, ripasso, spiegazione } from "./schema";
 import { carteDaRipassare, registraVoto } from "./ripasso";
 
 export type Env = {
@@ -48,13 +48,15 @@ const html = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").repla
 const breve = (s: string, max: number) => html(s.length > max ? s.slice(0, max) + "…" : s);
 const data = (s: string) => s.split("-").reverse().join("/");
 
+// `spiegazione` è il testo della spiegazione salvata (null se non c'è): il bot mostra solo quella, non chiama mai l'AI.
 const leggiCarta = async (d: DrizzleD1Database, id: number) => {
   const [k] = await d
-    .select({ carta, ripasso, nome_argomento: argomento.nome_argomento, nome_materia: materia.nome_materia })
+    .select({ carta, ripasso, nome_argomento: argomento.nome_argomento, nome_materia: materia.nome_materia, spiegazione: spiegazione.testo })
     .from(carta)
     .innerJoin(ripasso, eq(ripasso.id_carta, carta.id_carta))
     .innerJoin(argomento, eq(argomento.id_argomento, carta.id_argomento))
     .innerJoin(materia, eq(materia.id_materia, argomento.id_materia))
+    .leftJoin(spiegazione, eq(spiegazione.id_carta, carta.id_carta))
     .where(eq(carta.id_carta, id));
   return k;
 };
@@ -159,10 +161,10 @@ const gestisciClick = async (env: Env, dati: string, msg: Messaggio) => {
       reply_markup: { inline_keyboard },
     });
 
-  // m:id:n = vedi risposta · q:id:n:i = opzione scelta (indice) · v:id:n:voto
-  const [, tipo, id, n, x] = /^([mqv]):(\d{1,9}):(\d{1,9})(?::(\d))?$/.exec(dati) ?? [];
+  // m:id:n = vedi risposta · q:id:n:i = opzione scelta (indice) · v:id:n:voto · s:id:n = spiegazione salvata
+  const [, tipo, id, n, x] = /^([mqvs]):(\d{1,9}):(\d{1,9})(?::(\d))?$/.exec(dati) ?? [];
   if (!id) return "";
-  if ((tipo === "m") !== (x === undefined) || (tipo === "v" && +x > 5)) return "";
+  if ((tipo === "m" || tipo === "s") !== (x === undefined) || (tipo === "v" && +x > 5)) return "";
 
   const d = drizzle(env.DB);
   const k = await leggiCarta(d, +id);
@@ -175,13 +177,31 @@ const gestisciClick = async (env: Env, dati: string, msg: Messaggio) => {
     return "Carta già ripassata";
   };
   if (k.ripasso.numero_ripassi !== +n) return giàRipassata();
+  const voti = [[0, 1, 2, 3, 4, 5].map((v) => ({ text: String(v), callback_data: `v:${id}:${n}:${v}` }))];
+  // La spiegazione arriva in un messaggio a parte (quello della carta è già vicino ai 4096 caratteri); sulla carta
+  // resta solo la riga dei voti, così il pulsante non la manda due volte.
+  if (tipo === "s") {
+    const togliPulsante = () =>
+      tg(env, "editMessageReplyMarkup", { chat_id: msg.chat.id, message_id: msg.message_id, reply_markup: { inline_keyboard: voti } });
+    if (!k.spiegazione) {
+      await togliPulsante();
+      return "Nessuna spiegazione salvata";
+    }
+    await tg(env, "sendMessage", {
+      chat_id: msg.chat.id,
+      text: `<b>Spiegazione</b>\n${breve(k.spiegazione, 3800)}`,
+      parse_mode: "HTML",
+      reply_parameters: { message_id: msg.message_id },
+    });
+    await togliPulsante();
+    return "";
+  }
   if (tipo !== "v") {
     const opzioni = opzioniMescolate(k);
     if (tipo === "q" && (!èQuiz(k) || +x >= opzioni.length)) return "";
     const scelta = tipo === "q" ? +x : undefined;
-    await modifica(testoRisposta(k, scelta), [
-      [0, 1, 2, 3, 4, 5].map((v) => ({ text: String(v), callback_data: `v:${id}:${n}:${v}` })),
-    ]);
+    // Il pulsante compare solo se la spiegazione è già salvata.
+    await modifica(testoRisposta(k, scelta), k.spiegazione ? [...voti, [{ text: "💡 Spiegazione", callback_data: `s:${id}:${n}` }]] : voti);
     return scelta === undefined ? "" : opzioni[scelta] === k.carta.risposta ? "Giusto! ✅" : "Sbagliato ❌";
   }
   const nuovo = await registraVoto(d, k.ripasso, +x, k.carta.difficolta);

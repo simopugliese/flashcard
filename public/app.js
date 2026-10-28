@@ -967,7 +967,15 @@ async function importa(campo) {
   campo.disabled = true;
   try {
     const r = await api("/importa", "POST", dati);
-    avviso(`Importate ${r.materie} materie, ${r.argomenti} argomenti e ${r.carte} carte nuove${r.saltate ? ` (${r.saltate} già presenti, saltate)` : ""}.`, "success");
+    // I file non sono nell'archivio: quelli che il server non ha già vanno ricaricati a mano.
+    const mancanti = r.file_mancanti ?? [];
+    const titoli = mancanti.slice(0, 5).map((f) => f.titolo || "senza titolo").join(", ");
+    avviso(
+      `Importate ${r.materie} materie, ${r.argomenti} argomenti e ${r.carte} carte nuove${r.saltate ? ` (${r.saltate} già presenti, saltate)` : ""}, ` +
+        `${r.materiali ?? 0} materiali e ${r.spiegazioni ?? 0} spiegazioni.` +
+        (mancanti.length ? ` ${mancanti.length} file non presenti sul server sono stati saltati, ricaricali a mano: ${titoli}${mancanti.length > 5 ? "…" : ""}.` : ""),
+      mancanti.length ? "warning" : "success",
+    );
     caricaMaterie();
   } catch (e) {
     avviso(e.message);
