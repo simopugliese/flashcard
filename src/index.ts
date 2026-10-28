@@ -6,6 +6,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { materia, argomento, carta, ripasso } from "./schema";
 import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
+import materiali, { eliminaOrfani, hashArgomento, hashCarta, hashMateria } from "./materiali";
 import {
   ErroreValidazione,
   èViolazioneUnicita,
@@ -34,6 +35,8 @@ app.onError((e, c) => {
   return c.json({ errore: "errore interno" }, 500);
 });
 
+app.route("/", materiali);
+
 app.get("/materie", async (c) => c.json(await db(c).select().from(materia).orderBy(materia.nome_materia, materia.id_materia)));
 
 app.get("/materie/:id", async (c) => {
@@ -51,9 +54,14 @@ app.put("/materie/:id", async (c) => {
   return m ? c.json(m) : c.notFound();
 });
 
+// Le cancellazioni a cascata portano via anche i materiali: si leggono prima gli hash dei file per ripulire R2 dopo.
 app.delete("/materie/:id", async (c) => {
-  const eliminate = await db(c).delete(materia).where(eq(materia.id_materia, id(c))).returning({ id: materia.id_materia });
-  return eliminate.length ? c.body(null, 204) : c.notFound();
+  const d = db(c);
+  const hash = await hashMateria(d, id(c));
+  const eliminate = await d.delete(materia).where(eq(materia.id_materia, id(c))).returning({ id: materia.id_materia });
+  if (!eliminate.length) return c.notFound();
+  await eliminaOrfani(c.env, d, hash);
+  return c.body(null, 204);
 });
 
 // Media pesata sui ripassi e sulla difficoltà: media_esito * numero_ripassi è la somma dei voti della carta, quindi
@@ -106,8 +114,12 @@ app.put("/argomenti/:id", async (c) => {
 });
 
 app.delete("/argomenti/:id", async (c) => {
-  const eliminati = await db(c).delete(argomento).where(eq(argomento.id_argomento, id(c))).returning({ id: argomento.id_argomento });
-  return eliminati.length ? c.body(null, 204) : c.notFound();
+  const d = db(c);
+  const hash = await hashArgomento(d, id(c));
+  const eliminati = await d.delete(argomento).where(eq(argomento.id_argomento, id(c))).returning({ id: argomento.id_argomento });
+  if (!eliminati.length) return c.notFound();
+  await eliminaOrfani(c.env, d, hash);
+  return c.body(null, 204);
 });
 
 app.get("/argomenti/:id/carte", async (c) =>
@@ -283,8 +295,12 @@ app.put("/carte/:id", async (c) => {
 });
 
 app.delete("/carte/:id", async (c) => {
-  const eliminate = await db(c).delete(carta).where(eq(carta.id_carta, id(c))).returning({ id: carta.id_carta });
-  return eliminate.length ? c.body(null, 204) : c.notFound();
+  const d = db(c);
+  const hash = await hashCarta(d, id(c));
+  const eliminate = await d.delete(carta).where(eq(carta.id_carta, id(c))).returning({ id: carta.id_carta });
+  if (!eliminate.length) return c.notFound();
+  await eliminaOrfani(c.env, d, hash);
+  return c.body(null, 204);
 });
 
 app.post("/carte/:id/voto", async (c) => {

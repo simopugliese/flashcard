@@ -22,6 +22,10 @@
 			"migrations_dir": "drizzle"
 		}
 	],
+	// File dei materiali (immagini, PDF, testi): in D1 restano solo i metadati. Il bucket si crea con `wrangler r2 bucket create flashcard-files`.
+	"r2_buckets": [
+		{ "binding": "FILES", "bucket_name": "flashcard-files" }
+	],
 	"observability": {
 		"logs": {
 			"enabled": true,

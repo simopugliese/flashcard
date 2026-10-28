@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   ErroreValidazione,
   èViolazioneUnicita,
+  controllaFile,
   idPercorso,
   leggiFiltroRipasso,
   leggiImportazione,
   leggiModificaCarta,
+  leggiModificaMateriale,
+  leggiNuovaNota,
+  MAX_FILE_BYTES,
   leggiNuovaCarta,
   leggiVoto,
 } from "../src/validazione";
@@ -117,5 +121,38 @@ describe("èViolazioneUnicita", () => {
   it("ignora gli altri errori", () => {
     expect(èViolazioneUnicita(new Error("NOT NULL constraint failed"))).toBe(false);
     expect(èViolazioneUnicita(undefined)).toBe(false);
+  });
+});
+
+describe("controllaFile", () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0, 0]);
+  it("accetta un file coerente col tipo dichiarato e normalizza il tipo", () => {
+    expect(controllaFile("IMAGE/PNG; charset=x", png)).toBe("image/png");
+    expect(controllaFile("application/pdf", new TextEncoder().encode("%PDF-1.7"))).toBe("application/pdf");
+  });
+  it("rifiuta SVG e HTML", () => {
+    expect(errore(() => controllaFile("image/svg+xml", new TextEncoder().encode("<svg/>")))).toMatch(/non ammesso/);
+    expect(errore(() => controllaFile("text/html", new TextEncoder().encode("<b>")))).toMatch(/non ammesso/);
+  });
+  it("rifiuta un contenuto che non corrisponde al tipo", () => {
+    expect(errore(() => controllaFile("image/jpeg", png))).toMatch(/non corrisponde/);
+    expect(errore(() => controllaFile("text/plain", Uint8Array.from([65, 0, 66])))).toMatch(/non corrisponde/);
+  });
+  it("rifiuta file vuoti o sopra il limite", () => {
+    expect(errore(() => controllaFile("image/png", new Uint8Array()))).toMatch(/vuoto/);
+    const grande = new Uint8Array(MAX_FILE_BYTES + 1);
+    grande.set(png);
+    expect(errore(() => controllaFile("image/png", grande))).toMatch(/limite/);
+  });
+});
+
+describe("note dei materiali", () => {
+  it("leggiNuovaNota: titolo facoltativo, testo obbligatorio", () => {
+    expect(leggiNuovaNota({ testo: " $x^2$ " })).toEqual({ titolo: null, testo: "$x^2$" });
+    expect(errore(() => leggiNuovaNota({ titolo: "T" }))).toMatch(/testo/);
+  });
+  it("leggiModificaMateriale: serve almeno un campo e il titolo vuoto lo azzera", () => {
+    expect(errore(() => leggiModificaMateriale({}))).toMatch(/nessun campo/);
+    expect(leggiModificaMateriale({ titolo: "" })).toEqual({ titolo: null, testo: undefined });
   });
 });

@@ -168,6 +168,47 @@ export const leggiImportazione = (corpo: unknown) => {
   return { materie };
 };
 
-export const leggiVoto = (corpo: unknown) => intero(oggetto(corpo, ["voto"]).voto, "voto", 0, 5);
+// Limiti dei materiali. 2 MB per file: su una materia da ~1000 carte il totale resta gestibile (il frontend ricomprime le immagini).
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+export const MAX_FILE_PER_CARTA = 3;
+export const MAX_FILE_PER_ARGOMENTO = 50;
+export const MAX_TESTO_MATERIALE = 20000;
+
+// Solo formati che il browser non esegue: niente SVG né HTML (XSS). Il tipo dichiarato dal client non basta,
+// quindi si confronta con i primi byte del file.
+const FIRME: Record<string, (b: Uint8Array) => boolean> = {
+  "image/png": (b) => [0x89, 0x50, 0x4e, 0x47].every((x, i) => b[i] === x),
+  "image/jpeg": (b) => [0xff, 0xd8, 0xff].every((x, i) => b[i] === x),
+  "image/gif": (b) => [..."GIF8"].every((x, i) => b[i] === x.charCodeAt(0)),
+  "image/webp": (b) => [..."RIFF"].every((x, i) => b[i] === x.charCodeAt(0)) && [..."WEBP"].every((x, i) => b[8 + i] === x.charCodeAt(0)),
+  "application/pdf": (b) => [..."%PDF"].every((x, i) => b[i] === x.charCodeAt(0)),
+  "text/plain": (b) => !b.subarray(0, 1024).includes(0),
+};
+export const MIME_FILE = Object.keys(FIRME);
+
+// Verifica tipo, dimensione e contenuto di un file caricato; restituisce il tipo normalizzato.
+export const controllaFile = (mime: string, byte: Uint8Array) => {
+  const tipo = mime.split(";")[0].trim().toLowerCase();
+  if (!FIRME[tipo]) return errore(`tipo di file non ammesso (ammessi: ${MIME_FILE.join(", ")})`);
+  if (!byte.length) return errore("il file è vuoto");
+  if (byte.length > MAX_FILE_BYTES) return errore(`il file supera il limite di ${MAX_FILE_BYTES / 1024 / 1024} MB`);
+  if (!FIRME[tipo](byte)) return errore("il contenuto del file non corrisponde al tipo dichiarato");
+  return tipo;
+};
+
+const titoloOpzionale = (v: unknown) => (v === undefined || v === null || v === "" ? null : testo(v, "titolo", 100));
+
+export const leggiNuovaNota = (corpo: unknown) => {
+  const o = oggetto(corpo, ["titolo", "testo"]);
+  return { titolo: titoloOpzionale(o.titolo), testo: testo(o.testo, "testo", MAX_TESTO_MATERIALE) };
+};
+
+// Modifica di un materiale: il testo ha senso solo per le note (lo verifica la rotta, che conosce il tipo).
+export const leggiModificaMateriale = (corpo: unknown) => {
+  const o = oggetto(corpo, ["titolo", "testo"], true);
+  return { titolo: o.titolo === undefined ? undefined : titoloOpzionale(o.titolo), testo: se(o.testo, (v) => testo(v, "testo", MAX_TESTO_MATERIALE)) };
+};
+
+export const leggiVoto =(corpo: unknown) => intero(oggetto(corpo, ["voto"]).voto, "voto", 0, 5);
 
 export const inesistente = (nome: string) => errore(`${nome} inesistente`);

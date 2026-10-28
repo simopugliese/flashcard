@@ -29,6 +29,13 @@
       "when": 1793173239601,
       "tag": "0003_normal_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793178924445,
+      "tag": "0004_bored_komodo",
+      "breakpoints": true
     }
   ]
 }
