@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ErroreValidazione,
+  èViolazioneUnicita,
   idPercorso,
   leggiFiltroRipasso,
   leggiImportazione,
@@ -105,5 +106,16 @@ describe("leggiImportazione", () => {
   it("rifiuta media fuori scala", () => {
     const ripasso = { ultimo_ripasso: null, prossimo_ripasso: "2026-03-10", media_esito: 7, numero_ripassi: 0 };
     expect(errore(() => leggiImportazione(archivio(carta({ ripasso }))))).toMatch(/media_esito/);
+  });
+});
+
+describe("èViolazioneUnicita", () => {
+  it("riconosce l'errore nel messaggio o nella causa", () => {
+    expect(èViolazioneUnicita(new Error("D1_ERROR: UNIQUE constraint failed: materia.nome_materia"))).toBe(true);
+    expect(èViolazioneUnicita(new Error("query fallita", { cause: new Error("UNIQUE constraint failed: argomento.nome_argomento") }))).toBe(true);
+  });
+  it("ignora gli altri errori", () => {
+    expect(èViolazioneUnicita(new Error("NOT NULL constraint failed"))).toBe(false);
+    expect(èViolazioneUnicita(undefined)).toBe(false);
   });
 });

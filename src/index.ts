@@ -8,6 +8,7 @@ import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
 import {
   ErroreValidazione,
+  èViolazioneUnicita,
   idPercorso,
   inesistente,
   leggiFiltroRipasso,
@@ -28,6 +29,7 @@ const id = (c: { req: { param: (nome: "id") => string | undefined } }) => idPerc
 app.onError((e, c) => {
   if (e instanceof ErroreValidazione || e instanceof SyntaxError) return c.json({ errore: e.message }, 400);
   if (e instanceof HTTPException) return e.getResponse();
+  if (èViolazioneUnicita(e)) return c.json({ errore: "esiste già un elemento con questo nome" }, 409);
   console.error(e);
   return c.json({ errore: "errore interno" }, 500);
 });
@@ -181,12 +183,11 @@ app.post("/importa", async (c) => {
   const d = db(c);
 
   // Gli id ripartono dal massimo tra il contatore AUTOINCREMENT e le righe presenti, per non riusare id già eliminati.
-  const ultimo = (tabella: string, colonna: string) =>
-    `max((SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = '${tabella}'), (SELECT coalesce(max(${colonna}), 0) FROM ${tabella}))`;
   const [[inizio], esistentiM, esistentiA, esistentiC] = await Promise.all([
-    d.all<{ m: number; a: number; c: number }>(
-      sql.raw(`SELECT ${ultimo("materia", "id_materia")} AS m, ${ultimo("argomento", "id_argomento")} AS a, ${ultimo("carta", "id_carta")} AS c`),
-    ),
+    d.all<{ m: number; a: number; c: number }>(sql`SELECT
+      max((SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = 'materia'), (SELECT coalesce(max(id_materia), 0) FROM materia)) AS m,
+      max((SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = 'argomento'), (SELECT coalesce(max(id_argomento), 0) FROM argomento)) AS a,
+      max((SELECT coalesce(max(seq), 0) FROM sqlite_sequence WHERE name = 'carta'), (SELECT coalesce(max(id_carta), 0) FROM carta)) AS c`),
     d.select().from(materia),
     d.select().from(argomento),
     d.select({ id_argomento: carta.id_argomento, domanda: carta.domanda, risposta: carta.risposta }).from(carta),

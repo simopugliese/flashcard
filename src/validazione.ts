@@ -1,6 +1,9 @@
 // Controlli sui corpi JSON delle richieste: ogni errore diventa un 400 con il messaggio (vedi app.onError).
 export class ErroreValidazione extends Error {}
 
+// Violazione di un indice UNIQUE (D1 la riporta nel messaggio o nella causa dell'errore).
+export const èViolazioneUnicita = (e: unknown) => /UNIQUE constraint failed/i.test(`${e} ${(e as Error | undefined)?.cause}`);
+
 const errore = (messaggio: string): never => {
   throw new ErroreValidazione(messaggio);
 };
