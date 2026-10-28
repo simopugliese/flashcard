@@ -11,6 +11,9 @@ import {
   leggiNuovaNota,
   MAX_FILE_BYTES,
   leggiNuovaCarta,
+  leggiRichiestaGenera,
+  leggiRichiestaPrompt,
+  leggiSpiegazioneManuale,
   leggiVoto,
 } from "../src/validazione";
 
@@ -154,5 +157,24 @@ describe("note dei materiali", () => {
   it("leggiModificaMateriale: serve almeno un campo e il titolo vuoto lo azzera", () => {
     expect(errore(() => leggiModificaMateriale({}))).toMatch(/nessun campo/);
     expect(leggiModificaMateriale({ titolo: "" })).toEqual({ titolo: null, testo: undefined });
+  });
+});
+
+describe("spiegazioni", () => {
+  it("leggiSpiegazioneManuale: testo obbligatorio, materiali facoltativi", () => {
+    expect(leggiSpiegazioneManuale({ testo: " perché $x$ " })).toEqual({ testo: "perché $x$", materiali: [] });
+    expect(leggiSpiegazioneManuale({ testo: "t", materiali: [2, 1] })).toEqual({ testo: "t", materiali: [2, 1] });
+    expect(errore(() => leggiSpiegazioneManuale({ materiali: [] }))).toMatch(/testo/);
+  });
+  it("leggiRichiestaGenera: rigenera booleano, default false", () => {
+    expect(leggiRichiestaGenera({})).toEqual({ materiali: [], rigenera: false });
+    expect(leggiRichiestaGenera({ materiali: [3], rigenera: true })).toEqual({ materiali: [3], rigenera: true });
+    expect(errore(() => leggiRichiestaGenera({ rigenera: 1 }))).toMatch(/rigenera/);
+  });
+  it("rifiuta materiali duplicati, non validi o troppi", () => {
+    expect(errore(() => leggiRichiestaPrompt({ materiali: [1, 1] }))).toMatch(/diversi/);
+    expect(errore(() => leggiRichiestaPrompt({ materiali: [0] }))).toMatch(/intero positivo/);
+    expect(errore(() => leggiRichiestaPrompt({ materiali: Array.from({ length: 21 }, (_, i) => i + 1) }))).toMatch(/20/);
+    expect(errore(() => leggiRichiestaPrompt({ x: 1 }))).toMatch(/campi non previsti/);
   });
 });

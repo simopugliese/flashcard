@@ -17,7 +17,7 @@ import {
 
 type Proprietario = { id_argomento: number } | { id_carta: number };
 
-const sha256 = async (byte: Uint8Array) =>
+export const sha256 = async (byte: Uint8Array) =>
   [...new Uint8Array(await crypto.subtle.digest("SHA-256", byte))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 // Hash dei file di un gruppo di materiali: da leggere PRIMA di eliminare argomento/carta/materia (le righe spariscono a cascata)

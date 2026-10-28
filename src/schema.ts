@@ -58,6 +58,25 @@ export const materiale = sqliteTable("materiale", {
   index("materiale_hash_idx").on(t.hash),
 ]);
 
+// Spiegazione di una carta, scritta a mano o generata dall'AI e tenuta come cache: non si rigenera senza richiesta esplicita.
+// `impronta` è lo SHA-256 di domanda, risposta e contenuto dei `materiali` usati: se cambia, la spiegazione è obsoleta.
+export const spiegazione = sqliteTable("spiegazione", {
+  id_carta: integer().primaryKey().references(() => carta.id_carta, { onDelete: "cascade" }),
+  testo: text().notNull(),
+  testo_render: text().notNull(),
+  fonte: text({ enum: ["manuale", "ai"] }).notNull(),
+  modello: text(),
+  impronta: text().notNull(),
+  materiali: text({ mode: "json" }).$type<number[]>().notNull(),
+  creata_il: integer().notNull(),
+}, (t) => [check("spiegazione_fonte", sql`${t.fonte} IN ('manuale', 'ai')`)]);
+
+// Chiamate AI fatte in un giorno (data italiana AAAA-MM-GG): tetto alla spesa anche in caso di errori o abusi.
+export const uso_ai = sqliteTable("uso_ai", {
+  giorno: text().primaryKey(),
+  chiamate: integer().notNull(),
+});
+
 export const invio_telegram =sqliteTable("invio_telegram", {
   id: integer().primaryKey(),
   prossimo_invio: integer().notNull(),

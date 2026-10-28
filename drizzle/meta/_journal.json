@@ -43,6 +43,13 @@
       "when": 1793180539000,
       "tag": "0005_dry_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793184460555,
+      "tag": "0006_true_synch",
+      "breakpoints": true
     }
   ]
 }

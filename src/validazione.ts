@@ -209,6 +209,28 @@ export const leggiModificaMateriale = (corpo: unknown) => {
   return { titolo: o.titolo === undefined ? undefined : titoloOpzionale(o.titolo), testo: se(o.testo, (v) => testo(v, "testo", MAX_TESTO_MATERIALE)) };
 };
 
+// Spiegazioni: `materiali` sono gli id dei materiali (della carta o del suo argomento) dati come contesto.
+export const MAX_MATERIALI_SPIEGAZIONE = 20;
+
+const idMateriali = (v: unknown) => {
+  const ids = elenco(v, "materiali", MAX_MATERIALI_SPIEGAZIONE).map((x) => id(x, "ogni materiale"));
+  if (new Set(ids).size !== ids.length) return errore("i materiali devono essere tutti diversi");
+  return ids;
+};
+
+export const leggiSpiegazioneManuale = (corpo: unknown) => {
+  const o = oggetto(corpo, ["testo", "materiali"]);
+  return { testo: testo(o.testo, "testo", MAX_TESTO_MATERIALE), materiali: se(o.materiali, idMateriali) ?? [] };
+};
+
+export const leggiRichiestaGenera = (corpo: unknown) => {
+  const o = oggetto(corpo, ["materiali", "rigenera"]);
+  if (o.rigenera !== undefined && typeof o.rigenera !== "boolean") return errore("rigenera deve essere true o false");
+  return { materiali: se(o.materiali, idMateriali) ?? [], rigenera: o.rigenera === true };
+};
+
+export const leggiRichiestaPrompt = (corpo: unknown) => ({ materiali: se(oggetto(corpo, ["materiali"]).materiali, idMateriali) ?? [] });
+
 export const leggiVoto =(corpo: unknown) => intero(oggetto(corpo, ["voto"]).voto, "voto", 0, 5);
 
 export const inesistente = (nome: string) => errore(`${nome} inesistente`);

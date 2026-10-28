@@ -9,6 +9,11 @@ export type Env = {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
   TELEGRAM_WEBHOOK_SECRET: string;
+  // Spiegazioni AI (vedi src/ai.ts): senza AI_PROVIDER la funzione è spenta e resta solo la modalità manuale.
+  AI_PROVIDER?: string;
+  AI_API_KEY?: string;
+  AI_MODEL?: string;
+  AI_BASE_URL?: string;
 };
 
 type Messaggio = { message_id: number; chat: { id: number } };

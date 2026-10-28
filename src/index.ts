@@ -8,6 +8,8 @@ import { rendi } from "./render";
 import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
 import materiali, { eliminaOrfani, hashArgomento, hashCarta, hashMateria } from "./materiali";
+import spiegazioni from "./spiegazioni";
+import { ErroreProvider } from "./ai";
 import {
   ErroreValidazione,
   èViolazioneUnicita,
@@ -33,10 +35,12 @@ app.onError((e, c) => {
   if (e instanceof HTTPException) return e.getResponse();
   if (èViolazioneUnicita(e)) return c.json({ errore: "esiste già un elemento con questo nome" }, 409);
   console.error(e);
+  if (e instanceof ErroreProvider) return c.json({ errore: "il provider AI non ha risposto correttamente, riprova" }, 502);
   return c.json({ errore: "errore interno" }, 500);
 });
 
 app.route("/", materiali);
+app.route("/", spiegazioni);
 
 app.get("/materie", async (c) => c.json(await db(c).select().from(materia).orderBy(materia.nome_materia, materia.id_materia)));
 

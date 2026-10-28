@@ -1,0 +1,540 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "17b63418-3603-4802-9cd8-48f51fce76a8",
+  "prevId": "f03ff93e-34ff-4896-af56-206004963b09",
+  "tables": {
+    "argomento": {
+      "name": "argomento",
+      "columns": {
+        "id_argomento": {
+          "name": "id_argomento",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nome_argomento": {
+          "name": "nome_argomento",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id_materia": {
+          "name": "id_materia",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "argomento_nome_unico": {
+          "name": "argomento_nome_unico",
+          "columns": [
+            "id_materia",
+            "nome_argomento"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "argomento_id_materia_materia_id_materia_fk": {
+          "name": "argomento_id_materia_materia_id_materia_fk",
+          "tableFrom": "argomento",
+          "tableTo": "materia",
+          "columnsFrom": [
+            "id_materia"
+          ],
+          "columnsTo": [
+            "id_materia"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "carta": {
+      "name": "carta",
+      "columns": {
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "domanda": {
+          "name": "domanda",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "risposta": {
+          "name": "risposta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "domanda_render": {
+          "name": "domanda_render",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "risposta_render": {
+          "name": "risposta_render",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opzioni": {
+          "name": "opzioni",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "difficolta": {
+          "name": "difficolta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "id_argomento": {
+          "name": "id_argomento",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "carta_argomento_idx": {
+          "name": "carta_argomento_idx",
+          "columns": [
+            "id_argomento"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "carta_id_argomento_argomento_id_argomento_fk": {
+          "name": "carta_id_argomento_argomento_id_argomento_fk",
+          "tableFrom": "carta",
+          "tableTo": "argomento",
+          "columnsFrom": [
+            "id_argomento"
+          ],
+          "columnsTo": [
+            "id_argomento"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "invio_telegram": {
+      "name": "invio_telegram",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prossimo_invio": {
+          "name": "prossimo_invio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "materia": {
+      "name": "materia",
+      "columns": {
+        "id_materia": {
+          "name": "id_materia",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nome_materia": {
+          "name": "nome_materia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "materia_nome_unico": {
+          "name": "materia_nome_unico",
+          "columns": [
+            "nome_materia"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "materiale": {
+      "name": "materiale",
+      "columns": {
+        "id_materiale": {
+          "name": "id_materiale",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "titolo": {
+          "name": "titolo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "testo": {
+          "name": "testo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "testo_render": {
+          "name": "testo_render",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hash": {
+          "name": "hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mime": {
+          "name": "mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dimensione": {
+          "name": "dimensione",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id_argomento": {
+          "name": "id_argomento",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "creato_il": {
+          "name": "creato_il",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "materiale_argomento_idx": {
+          "name": "materiale_argomento_idx",
+          "columns": [
+            "id_argomento"
+          ],
+          "isUnique": false
+        },
+        "materiale_carta_idx": {
+          "name": "materiale_carta_idx",
+          "columns": [
+            "id_carta"
+          ],
+          "isUnique": false
+        },
+        "materiale_hash_idx": {
+          "name": "materiale_hash_idx",
+          "columns": [
+            "hash"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "materiale_id_argomento_argomento_id_argomento_fk": {
+          "name": "materiale_id_argomento_argomento_id_argomento_fk",
+          "tableFrom": "materiale",
+          "tableTo": "argomento",
+          "columnsFrom": [
+            "id_argomento"
+          ],
+          "columnsTo": [
+            "id_argomento"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "materiale_id_carta_carta_id_carta_fk": {
+          "name": "materiale_id_carta_carta_id_carta_fk",
+          "tableFrom": "materiale",
+          "tableTo": "carta",
+          "columnsFrom": [
+            "id_carta"
+          ],
+          "columnsTo": [
+            "id_carta"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "materiale_un_proprietario": {
+          "name": "materiale_un_proprietario",
+          "value": "(\"materiale\".\"id_argomento\" IS NULL) <> (\"materiale\".\"id_carta\" IS NULL)"
+        },
+        "materiale_contenuto": {
+          "name": "materiale_contenuto",
+          "value": "(\"materiale\".\"tipo\" = 'testo' AND \"materiale\".\"testo\" IS NOT NULL) OR (\"materiale\".\"tipo\" = 'file' AND \"materiale\".\"hash\" IS NOT NULL AND \"materiale\".\"mime\" IS NOT NULL)"
+        }
+      }
+    },
+    "ripasso": {
+      "name": "ripasso",
+      "columns": {
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ultimo_ripasso": {
+          "name": "ultimo_ripasso",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "prossimo_ripasso": {
+          "name": "prossimo_ripasso",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_esito": {
+          "name": "media_esito",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "numero_ripassi": {
+          "name": "numero_ripassi",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "ripasso_prossimo_idx": {
+          "name": "ripasso_prossimo_idx",
+          "columns": [
+            "prossimo_ripasso"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ripasso_id_carta_carta_id_carta_fk": {
+          "name": "ripasso_id_carta_carta_id_carta_fk",
+          "tableFrom": "ripasso",
+          "tableTo": "carta",
+          "columnsFrom": [
+            "id_carta"
+          ],
+          "columnsTo": [
+            "id_carta"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "spiegazione": {
+      "name": "spiegazione",
+      "columns": {
+        "id_carta": {
+          "name": "id_carta",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "testo": {
+          "name": "testo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "testo_render": {
+          "name": "testo_render",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fonte": {
+          "name": "fonte",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "modello": {
+          "name": "modello",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "impronta": {
+          "name": "impronta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "materiali": {
+          "name": "materiali",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creata_il": {
+          "name": "creata_il",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "spiegazione_id_carta_carta_id_carta_fk": {
+          "name": "spiegazione_id_carta_carta_id_carta_fk",
+          "tableFrom": "spiegazione",
+          "tableTo": "carta",
+          "columnsFrom": [
+            "id_carta"
+          ],
+          "columnsTo": [
+            "id_carta"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "spiegazione_fonte": {
+          "name": "spiegazione_fonte",
+          "value": "\"spiegazione\".\"fonte\" IN ('manuale', 'ai')"
+        }
+      }
+    },
+    "uso_ai": {
+      "name": "uso_ai",
+      "columns": {
+        "giorno": {
+          "name": "giorno",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chiamate": {
+          "name": "chiamate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

@@ -14,6 +14,9 @@ flashcard/
 │   ├── schema.ts        tabelle del database (Drizzle ORM)
 │   ├── index.ts         tutte le API (Hono) e punto d'ingresso del Worker
 │   ├── materiali.ts     API dei materiali (note e file) e pulizia dei file orfani in R2
+│   ├── render.ts        rendering del LaTeX con KaTeX, al salvataggio
+│   ├── spiegazioni.ts   API delle spiegazioni (manuali o AI, con cache)
+│   ├── ai.ts            prompt, impronta e adapter dei provider AI (Anthropic, OpenAI-compatibile)
 │   ├── validazione.ts   controlli sui body delle richieste e limiti dei materiali
 │   ├── ripasso.ts       carte da ripassare e registrazione del voto, usate da API e bot
 │   └── telegram.ts      bot Telegram: invio programmato e gestione dei click
@@ -28,6 +31,7 @@ flashcard/
 
 - **Backend:** TypeScript, [Hono](https://hono.dev) per il routing, [Drizzle ORM](https://orm.drizzle.team) per le query su **Cloudflare D1** (SQLite).
 - **File:** i file dei materiali stanno in **Cloudflare R2** (binding `FILES`); in D1 restano solo i metadati.
+- **AI (facoltativa):** le spiegazioni si possono generare con un provider esterno, chiamato con `fetch` (nessun SDK) e solo su richiesta esplicita; vedi [Spiegazioni](#spiegazioni).
 - **Frontend:** HTML, JavaScript puro e Bootstrap 5, senza build. È un'unica pagina che mostra una schermata alla volta.
 - **Instradamento:** le richieste che corrispondono a un file in `public/` (es. `/`, `/app.js`) sono servite come asset statici; tutte le altre arrivano a Hono. Il frontend chiama le API con percorsi relativi, quindi non serve CORS.
 
@@ -35,7 +39,7 @@ flashcard/
 
 ```
 Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
-                     │               │
+                     │               │  └── 1 ── 0..1  Spiegazione
                      └── N Materiale ┘   (di un argomento oppure di una carta)
 ```
 
@@ -46,9 +50,11 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 | `carta` | `id_carta`, `domanda`, `risposta`, `domanda_render`, `risposta_render` (HTML del [LaTeX](#latex), `null` finché non calcolato), `opzioni` (JSON, facoltativo), `difficolta` (default 3 se creata da API; la colonna nel DB ha ancora default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
 | `materiale` | `id_materiale`, `tipo` (`testo` o `file`), `titolo`, `testo`, `testo_render` (HTML del [LaTeX](#latex) delle note, `null` per i file), `hash`, `mime`, `dimensione`, `id_argomento` **oppure** `id_carta` (esattamente uno dei due, imposto da un vincolo CHECK), `creato_il` (millisecondi) |
+| `spiegazione` | `id_carta` (chiave, una per carta), `testo`, `testo_render` (HTML del [LaTeX](#latex)), `fonte` (`manuale` o `ai`), `modello` (`null` se manuale), `impronta` (SHA-256 di domanda, risposta e contenuto dei materiali usati), `materiali` (JSON degli id usati), `creata_il` (millisecondi) |
+| `uso_ai` | `giorno` (`YYYY-MM-DD`, ora italiana), `chiamate`: contatore per il tetto giornaliero delle chiamate AI |
 | `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
-- Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte, i materiali e i dati di ripasso. I file rimasti senza materiali vengono tolti anche da R2 (vedi [Materiali](#materiali)).
+- Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte, i materiali, le spiegazioni e i dati di ripasso. I file rimasti senza materiali vengono tolti anche da R2 (vedi [Materiali](#materiali)).
 - Il ripasso viene creato automaticamente insieme alla carta, con `prossimo_ripasso` = oggi.
 - Le date sono stringhe `YYYY-MM-DD` in UTC.
 
@@ -104,7 +110,7 @@ Ad **argomenti** e **carte** si possono collegare materiali di studio: **note** 
   | Lunghezza del titolo | 100 caratteri |
 
   Le note di testo non hanno un limite di numero e non c'è un tetto sullo spazio totale in R2: per i costi si usa l'allerta di budget di Cloudflare.
-- **Stato:** per ora c'è solo il backend. L'interfaccia, le spiegazioni e l'inclusione nell'esportazione sono i passi successivi.
+- **Stato:** per ora c'è solo il backend. L'interfaccia e l'inclusione nell'esportazione sono i passi successivi.
 
 ### LaTeX
 
@@ -116,9 +122,56 @@ Nelle domande, nelle risposte e nelle note le formule si scrivono tra `$...$` (i
 - **Carte esistenti:** finché `*_render` è `null` il frontend mostra il testo grezzo. Per calcolarlo, dopo il deploy, ripeti `POST /rirenderizza` (100 elementi per chiamata) finché `rimaste` è 0:
 
   ```bash
-  # dietro Cloudflare Access serve un token di servizio o la sessione; in locale basta così
+  # in locale
   until curl -s -X POST http://localhost:8787/rirenderizza | tee /dev/stderr | grep -q '"rimaste":0'; do :; done
   ```
+
+  In produzione un `curl` da terminale viene fermato da Cloudflare Access: apri l'app nel browser (già loggato) e lancia dalla console, ripetendo finché `rimaste` è 0:
+
+  ```js
+  await fetch("/rirenderizza", { method: "POST" }).then((r) => r.json())
+  ```
+
+### Spiegazioni
+
+Ogni carta può avere **una spiegazione**, scritta a mano oppure generata dall'AI. Una volta salvata fa da **cache**: richiederla di nuovo non richiama mai l'AI, a meno di chiedere esplicitamente `rigenera: true`. Una spiegazione scritta a mano non viene mai sovrascritta senza `rigenera: true`.
+
+- **Contesto:** a ogni richiesta si scelgono i materiali da dare all'AI, tra quelli della carta e del suo argomento (altri id danno 400). Note e file di testo vanno come testo, immagini e PDF come allegati.
+- **Obsoleta:** al salvataggio si calcola un'`impronta` (SHA-256 di domanda, risposta e contenuto dei materiali usati). Se poi la carta o uno di quei materiali cambia, o un materiale viene eliminato, le risposte riportano `obsoleta: true`: la spiegazione resta visibile e si può rigenerare.
+- **Sicurezza del prompt:** carta e materiali arrivano al modello tra tag (`<carta>`, `<materiale>`) con `<`, `>`, `&` escapati, e il prompt di sistema dice di trattarli solo come dati, ignorando eventuali istruzioni contenute. Il testo restituito passa da `rendi` come tutto il resto (niente HTML dal modello).
+- **Senza AI:** `POST /carte/:id/spiegazione/prompt` restituisce il prompt già pronto da incollare in una chat qualsiasi (gli allegati sono elencati da aggiungere a mano); la risposta si salva con `PUT /carte/:id/spiegazione`. Così l'app funziona anche senza provider configurato.
+- **Quando si chiama l'AI:** solo da `POST /carte/:id/spiegazione/genera`. Mai dal cron né da Telegram.
+- **Limiti** (costanti in cima a `src/ai.ts`; il numero di materiali è in `src/validazione.ts`):
+
+  | Limite | Valore |
+  |---|---|
+  | Materiali per richiesta | 20 |
+  | Immagini per chiamata | 5 |
+  | Byte totali dei materiali inviati | 8 MB |
+  | Chiamate AI al giorno (contatore in `uso_ai`, ora italiana) | 30 |
+
+  Ogni tentativo di chiamata conta nel limite giornaliero, anche se il provider poi risponde con un errore.
+
+#### Provider AI
+
+Il provider si sceglie con le variabili del Worker. Senza `AI_PROVIDER` la funzione AI è spenta (`ai: false` nelle risposte) e resta la modalità manuale.
+
+| Variabile | `anthropic` | `openai` (qualsiasi API compatibile: OpenAI, OpenRouter, Ollama…) |
+|---|---|---|
+| `AI_PROVIDER` | `anthropic` | `openai` |
+| `AI_API_KEY` | obbligatoria | facoltativa (Ollama in locale non la vuole) |
+| `AI_MODEL` | facoltativa, default `claude-opus-5-5` | obbligatoria |
+| `AI_BASE_URL` | – | obbligatoria, es. `https://api.openai.com/v1` (il Worker aggiunge `/chat/completions`) |
+
+- Con Anthropic i PDF sono supportati; con l'adapter OpenAI-compatibile no (400 se selezionati), perché non c'è un formato standard. Per i modelli Anthropic recenti la richiesta abilita il fallback lato server: se il modello rifiuta, l'API ripete la richiesta con un altro modello, e `modello` registra quello che ha risposto davvero.
+- **La chiave è il vero rischio di spesa.** Usa una chiave **dedicata a questo progetto**, imposta un **limite di spesa mensile** sulla console del provider e salvala solo come secret:
+  ```bash
+  npx wrangler secret put AI_PROVIDER   # anthropic oppure openai
+  npx wrangler secret put AI_API_KEY
+  npx wrangler secret put AI_MODEL      # facoltativa con anthropic
+  npx wrangler secret put AI_BASE_URL   # solo con openai
+  ```
+  In locale vanno in `.dev.vars`. Per spegnere l'AI: `npx wrangler secret delete AI_PROVIDER`.
 
 ## API
 
@@ -148,6 +201,10 @@ Tutte le richieste e risposte sono in JSON, tranne il caricamento di un file (`m
 | PUT | `/materiali/:id` | almeno uno tra `titolo` (vuoto = nessun titolo) e `testo` (solo per le note) | materiale aggiornato |
 | DELETE | `/materiali/:id` | – | 204; il file va via da R2 se nessun altro materiale lo usa |
 | GET | `/materiali/:id/file` | – | il file (404 per le note) |
+| GET | `/carte/:id/spiegazione` | – | `{ spiegazione, obsoleta, ai }`: `spiegazione` è `null` se non c'è; `ai` dice se un provider è configurato (vedi [Spiegazioni](#spiegazioni)) |
+| PUT | `/carte/:id/spiegazione` | `{ testo, materiali? }` (id dei materiali usati come contesto) | `{ spiegazione, obsoleta, ai }`: salva una spiegazione **manuale**, sostituendo quella esistente |
+| POST | `/carte/:id/spiegazione/genera` | `{ materiali?, rigenera? }` | `{ spiegazione, obsoleta, ai, dalla_cache }`. Se esiste già e manca `rigenera: true` restituisce quella salvata **senza chiamare l'AI**. 503 se l'AI non è configurata, 429 oltre il limite giornaliero, 502 se il provider fallisce |
+| POST | `/carte/:id/spiegazione/prompt` | `{ materiali? }` | `{ prompt, allegati }`: il prompt da copiare in una chat esterna, con l'elenco di immagini e PDF da allegare a mano. Non chiama l'AI |
 | POST | `/rirenderizza` | – | `{ rinnovate, rimaste }`: calcola l'HTML LaTeX di carte e note che non ce l'hanno (max 100 per chiamata, idempotente), vedi [LaTeX](#latex) |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID`, `modo=scadenza\|anticipo\|tutte` (default `scadenza`), `casuale=0\|1`, `limite=1..500` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
@@ -162,6 +219,9 @@ Errori:
 - `404` (testo semplice): risorsa non trovata;
 - `409` con `{ "errore": "messaggio" }`: la carta è stata ripassata mentre arrivava il voto, oppure esiste già un elemento con lo stesso nome;
 - `413` con `{ "errore": "messaggio" }`: file oltre il limite di dimensione;
+- `429` con `{ "errore": "messaggio" }`: limite giornaliero delle chiamate AI raggiunto;
+- `502` con `{ "errore": "messaggio" }`: il provider AI non ha risposto correttamente (il dettaglio finisce nei log del Worker);
+- `503` con `{ "errore": "messaggio" }`: funzione AI non configurata;
 - `500` con `{ "errore": "errore interno" }`: errore imprevisto, il dettaglio finisce nei log del Worker.
 
 Esempio:
@@ -217,7 +277,8 @@ Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo 
 
 - **Modifiche al codice** (`src/` o `public/`): basta `npm run deploy`.
 - **Modifiche al database:** prima applica le migrazioni, poi pubblica (vedi [Modificare il database](#modificare-il-database)).
-- **Dopo l'aggiornamento che introduce il [LaTeX](#latex):** `npm run db:migrate:remote`, poi `npm run deploy`, poi `POST /rirenderizza` fino a `rimaste: 0`.
+- **Dopo l'aggiornamento che introduce il [LaTeX](#latex):** `npm run db:migrate:remote`, poi `npm run deploy`, poi `POST /rirenderizza` fino a `rimaste: 0` (dalla console del browser, vedi [LaTeX](#latex)).
+- **Dopo l'aggiornamento che introduce le [Spiegazioni](#spiegazioni):** `npm run db:migrate:remote`, poi `npm run deploy`. L'AI resta spenta finché non imposti i secret del [provider](#provider-ai).
 
 ### Proteggere l'accesso
 
