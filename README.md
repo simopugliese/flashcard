@@ -43,9 +43,9 @@ Materia   1 ── N  Argomento  1 ── N  Carta  1 ── 1  Ripasso
 |---|---|
 | `materia` | `id_materia`, `nome_materia` |
 | `argomento` | `id_argomento`, `nome_argomento`, `id_materia` |
-| `carta` | `id_carta`, `domanda`, `risposta`, `opzioni` (JSON, facoltativo), `difficolta` (default 3 se creata da API; la colonna nel DB ha ancora default 1), `id_argomento` |
+| `carta` | `id_carta`, `domanda`, `risposta`, `domanda_render`, `risposta_render` (HTML del [LaTeX](#latex), `null` finché non calcolato), `opzioni` (JSON, facoltativo), `difficolta` (default 3 se creata da API; la colonna nel DB ha ancora default 1), `id_argomento` |
 | `ripasso` | `id_carta`, `ultimo_ripasso`, `prossimo_ripasso`, `media_esito`, `numero_ripassi` |
-| `materiale` | `id_materiale`, `tipo` (`testo` o `file`), `titolo`, `testo`, `testo_render` (riservato al LaTeX renderizzato, per ora sempre `null`), `hash`, `mime`, `dimensione`, `id_argomento` **oppure** `id_carta` (esattamente uno dei due, imposto da un vincolo CHECK), `creato_il` (millisecondi) |
+| `materiale` | `id_materiale`, `tipo` (`testo` o `file`), `titolo`, `testo`, `testo_render` (HTML del [LaTeX](#latex) delle note, `null` per i file), `hash`, `mime`, `dimensione`, `id_argomento` **oppure** `id_carta` (esattamente uno dei due, imposto da un vincolo CHECK), `creato_il` (millisecondi) |
 | `invio_telegram` | `id` (sempre 1), `prossimo_invio` (timestamp in millisecondi) |
 
 - Le eliminazioni sono **a cascata**: eliminando una materia si eliminano anche i suoi argomenti, le carte, i materiali e i dati di ripasso. I file rimasti senza materiali vengono tolti anche da R2 (vedi [Materiali](#materiali)).
@@ -104,7 +104,21 @@ Ad **argomenti** e **carte** si possono collegare materiali di studio: **note** 
   | Lunghezza del titolo | 100 caratteri |
 
   Le note di testo non hanno un limite di numero e non c'è un tetto sullo spazio totale in R2: per i costi si usa l'allerta di budget di Cloudflare.
-- **Stato:** per ora c'è solo il backend. L'interfaccia, il LaTeX renderizzato, le spiegazioni e l'inclusione nell'esportazione sono i passi successivi.
+- **Stato:** per ora c'è solo il backend. L'interfaccia, le spiegazioni e l'inclusione nell'esportazione sono i passi successivi.
+
+### LaTeX
+
+Nelle domande, nelle risposte e nelle note le formule si scrivono tra `$...$` (in linea) e `$$...$$` (a blocco); `\$` è un dollaro letterale. Il **Worker le renderizza con KaTeX una sola volta, al salvataggio**, e salva l'HTML accanto al testo grezzo (`domanda_render`, `risposta_render`, `testo_render`). Ripasso e vista a carte mostrano l'HTML già pronto (serve solo il CSS di KaTeX, caricato da CDN); la finestra di modifica, l'elenco, la ricerca e il bot Telegram usano il testo grezzo.
+
+- Il testo fuori dalle formule viene escapato (niente HTML dall'utente) e gli a capo diventano `<br>`. KaTeX gira con `trust: false`.
+- Frasi come «costa $5 e $6» restano testo: l'apertura non ha spazio dopo, la chiusura non ha spazio prima né una cifra dopo. Al massimo 200 formule per testo.
+- L'importazione rigenera sempre l'HTML; l'esportazione (versione 1) non lo include.
+- **Carte esistenti:** finché `*_render` è `null` il frontend mostra il testo grezzo. Per calcolarlo, dopo il deploy, ripeti `POST /rirenderizza` (100 elementi per chiamata) finché `rimaste` è 0:
+
+  ```bash
+  # dietro Cloudflare Access serve un token di servizio o la sessione; in locale basta così
+  until curl -s -X POST http://localhost:8787/rirenderizza | tee /dev/stderr | grep -q '"rimaste":0'; do :; done
+  ```
 
 ## API
 
@@ -134,6 +148,7 @@ Tutte le richieste e risposte sono in JSON, tranne il caricamento di un file (`m
 | PUT | `/materiali/:id` | almeno uno tra `titolo` (vuoto = nessun titolo) e `testo` (solo per le note) | materiale aggiornato |
 | DELETE | `/materiali/:id` | – | 204; il file va via da R2 se nessun altro materiale lo usa |
 | GET | `/materiali/:id/file` | – | il file (404 per le note) |
+| POST | `/rirenderizza` | – | `{ rinnovate, rimaste }`: calcola l'HTML LaTeX di carte e note che non ce l'hanno (max 100 per chiamata, idempotente), vedi [LaTeX](#latex) |
 | GET | `/carte/da-ripassare` | query facoltative `materia=ID`, `argomenti=ID,ID`, `modo=scadenza\|anticipo\|tutte` (default `scadenza`), `casuale=0\|1`, `limite=1..500` | `[{ carta, ripasso }]` in ordine di priorità |
 | POST | `/carte/:id/voto` | `{ voto }` intero da 0 a 5 | ripasso aggiornato |
 | GET | `/esporta` | — | archivio JSON (`versione: 1`, materie → argomenti → carte con dati di ripasso), scaricabile |
@@ -202,6 +217,7 @@ Il database su Cloudflare parte **vuoto**: i dati creati in locale restano solo 
 
 - **Modifiche al codice** (`src/` o `public/`): basta `npm run deploy`.
 - **Modifiche al database:** prima applica le migrazioni, poi pubblica (vedi [Modificare il database](#modificare-il-database)).
+- **Dopo l'aggiornamento che introduce il [LaTeX](#latex):** `npm run db:migrate:remote`, poi `npm run deploy`, poi `POST /rirenderizza` fino a `rimaste: 0`.
 
 ### Proteggere l'accesso
 

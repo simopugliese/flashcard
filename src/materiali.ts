@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { and, count, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { argomento, carta, materiale } from "./schema";
+import { rendi } from "./render";
 import type { Env } from "./telegram";
 import {
   controllaFile,
@@ -83,7 +84,8 @@ const crea = async (c: Context<{ Bindings: Env }>, p: Proprietario) => {
   const proprietario = "id_carta" in p ? { id_carta: p.id_carta } : { id_argomento: p.id_argomento };
 
   if (!c.req.header("Content-Type")?.startsWith("multipart/form-data")) {
-    const [m] = await d.insert(materiale).values({ tipo: "testo", ...leggiNuovaNota(await c.req.json()), ...proprietario, creato_il: ora }).returning();
+    const nota = leggiNuovaNota(await c.req.json());
+    const [m] = await d.insert(materiale).values({ tipo: "testo", ...nota, testo_render: rendi(nota.testo), ...proprietario, creato_il: ora }).returning();
     return c.json(m, 201);
   }
 
@@ -129,7 +131,7 @@ router.put("/materiali/:id", async (c) => {
   const [m] = await d.select({ tipo: materiale.tipo }).from(materiale).where(eq(materiale.id_materiale, id(c)));
   if (!m) return c.notFound();
   if (m.tipo === "file" && dati.testo !== undefined) throw new ErroreValidazione("il testo si può modificare solo nelle note");
-  const [r] = await d.update(materiale).set(dati).where(eq(materiale.id_materiale, id(c))).returning();
+  const [r] = await d.update(materiale).set({ ...dati, testo_render: dati.testo === undefined ? undefined : rendi(dati.testo) }).where(eq(materiale.id_materiale, id(c))).returning();
   return c.json(r);
 });
 

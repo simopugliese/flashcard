@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, getTableColumns, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, isNull, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { materia, argomento, carta, ripasso } from "./schema";
+import { materia, argomento, carta, materiale, ripasso } from "./schema";
+import { rendi } from "./render";
 import { carteDaRipassare, oggi, registraVoto } from "./ripasso";
 import { gestisciUpdate, invioProgrammato, segretoValido, type Env } from "./telegram";
 import materiali, { eliminaOrfani, hashArgomento, hashCarta, hashMateria } from "./materiali";
@@ -243,7 +244,7 @@ app.post("/importa", async (c) => {
         }
         cartePresenti.add(chiave);
         const idK = ++idCarta;
-        nuoveCarte.push({ ...k, id_carta: idK, id_argomento: idA });
+        nuoveCarte.push({ ...k, domanda_render: rendi(k.domanda), risposta_render: rendi(k.risposta), id_carta: idK, id_argomento: idA });
         nuoviRipassi.push(azzera ? { id_carta: idK, prossimo_ripasso: oggi() } : { id_carta: idK, ...r });
       }
     }
@@ -283,14 +284,20 @@ app.post("/carte", async (c) => {
   const [a] = await d.select({ id: argomento.id_argomento }).from(argomento).where(eq(argomento.id_argomento, dati.id_argomento));
   if (!a) return inesistente("argomento");
   const [[k], [r]] = await d.batch([
-    d.insert(carta).values(dati).returning(),
+    d.insert(carta).values({ ...dati, domanda_render: rendi(dati.domanda), risposta_render: rendi(dati.risposta) }).returning(),
     d.insert(ripasso).values({ id_carta: sql`last_insert_rowid()`, prossimo_ripasso: oggi() }).returning(),
   ]);
   return c.json({ carta: k, ripasso: r }, 201);
 });
 
 app.put("/carte/:id", async (c) => {
-  const [k] = await db(c).update(carta).set(leggiModificaCarta(await c.req.json())).where(eq(carta.id_carta, id(c))).returning();
+  const dati = leggiModificaCarta(await c.req.json());
+  // Il render si ricalcola solo per i testi che cambiano.
+  const render = {
+    domanda_render: dati.domanda === undefined ? undefined : rendi(dati.domanda),
+    risposta_render: dati.risposta === undefined ? undefined : rendi(dati.risposta),
+  };
+  const [k] = await db(c).update(carta).set({ ...dati, ...render }).where(eq(carta.id_carta, id(c))).returning();
   return k ? c.json(k) : c.notFound();
 });
 
@@ -301,6 +308,33 @@ app.delete("/carte/:id", async (c) => {
   if (!eliminate.length) return c.notFound();
   await eliminaOrfani(c.env, d, hash);
   return c.body(null, 204);
+});
+
+// Una tantum, per i dati precedenti al LaTeX: a ogni chiamata rende fino a 100 carte e note ancora senza HTML e dice
+// quante ne restano. Si ripete finché `rimaste` è 0. Fino ad allora il frontend mostra il testo grezzo.
+const LOTTO_RENDER = 100;
+app.post("/rirenderizza", async (c) => {
+  const d = db(c);
+  const cartaDaFare = or(isNull(carta.domanda_render), isNull(carta.risposta_render));
+  const notaDaFare = and(eq(materiale.tipo, "testo"), isNull(materiale.testo_render));
+  const carte = await d
+    .select({ id: carta.id_carta, domanda: carta.domanda, risposta: carta.risposta })
+    .from(carta)
+    .where(cartaDaFare)
+    .limit(LOTTO_RENDER);
+  const note = await d
+    .select({ id: materiale.id_materiale, testo: materiale.testo })
+    .from(materiale)
+    .where(notaDaFare)
+    .limit(LOTTO_RENDER - carte.length);
+  const istruzioni: BatchItem<"sqlite">[] = [
+    ...carte.map((k) => d.update(carta).set({ domanda_render: rendi(k.domanda), risposta_render: rendi(k.risposta) }).where(eq(carta.id_carta, k.id))),
+    ...note.map((n) => d.update(materiale).set({ testo_render: rendi(n.testo ?? "") }).where(eq(materiale.id_materiale, n.id))),
+  ];
+  if (istruzioni.length) await d.batch(istruzioni as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+  const [{ n: rimasteCarte }] = await d.select({ n: sql<number>`count(*)` }).from(carta).where(cartaDaFare);
+  const [{ n: rimasteNote }] = await d.select({ n: sql<number>`count(*)` }).from(materiale).where(notaDaFare);
+  return c.json({ rinnovate: istruzioni.length, rimaste: rimasteCarte + rimasteNote });
 });
 
 app.post("/carte/:id/voto", async (c) => {

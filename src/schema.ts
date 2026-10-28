@@ -16,6 +16,10 @@ export const carta = sqliteTable("carta", {
   id_carta: integer().primaryKey({ autoIncrement: true }),
   domanda: text().notNull(),
   risposta: text().notNull(),
+  // HTML già renderizzato (LaTeX con KaTeX) di domanda e risposta, calcolato dal Worker al salvataggio.
+  // Nullable: le carte precedenti lo ottengono con POST /rirenderizza e fino ad allora il frontend usa il testo grezzo.
+  domanda_render: text(),
+  risposta_render: text(),
   // Opzioni sbagliate: se presenti la carta è a scelta multipla (la risposta corretta resta in `risposta`).
   opzioni: text({ mode: "json" }).$type<string[]>(),
   // Il default del DB (1) non è usato: l'app imposta sempre la difficoltà (3 se omessa). Cambiarlo in SQLite

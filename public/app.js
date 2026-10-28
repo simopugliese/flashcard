@@ -238,6 +238,15 @@ function impostaVista(vista) {
   caricaCarte();
 }
 
+// Mostra il testo di una carta: l'HTML già renderizzato dal Worker (unico punto che usa innerHTML per i contenuti)
+// oppure, per le carte non ancora renderizzate, il testo grezzo.
+function mostraTesto(elemento, grezzo, render, prefisso = "") {
+  elemento.classList.toggle("renderizzato", render != null);
+  if (render == null) return (elemento.textContent = prefisso + grezzo);
+  elemento.innerHTML = render;
+  if (prefisso) elemento.prepend(prefisso);
+}
+
 function cartaFlip(carta, ripasso) {
   const elemento = $("modello-card").content.firstElementChild.cloneNode(true);
   const flip = elemento.querySelector(".carta-flip");
@@ -251,8 +260,8 @@ function cartaFlip(carta, ripasso) {
     e.preventDefault();
     gira();
   };
-  elemento.querySelector(".domanda").textContent = carta.domanda;
-  elemento.querySelector(".risposta").textContent = (carta.opzioni?.length ? "✓ " : "") + carta.risposta;
+  mostraTesto(elemento.querySelector(".domanda"), carta.domanda, carta.domanda_render);
+  mostraTesto(elemento.querySelector(".risposta"), carta.risposta, carta.risposta_render, carta.opzioni?.length ? "✓ " : "");
   elemento.querySelector(".nota").textContent = statistiche(ripasso.media_esito, ripasso.numero_ripassi, "mai ripassata");
   elemento.querySelector(".multipla").classList.toggle("d-none", !carta.opzioni?.length);
   elemento.querySelector(".risposta").classList.toggle("text-success", !!carta.opzioni?.length);
@@ -390,8 +399,8 @@ function iniziaSessione() {
 function mostraCarta() {
   const { carta } = stato.coda[stato.indice];
   $("progresso").textContent = `Carta ${stato.indice + 1} di ${stato.coda.length}`;
-  $("domanda").textContent = carta.domanda;
-  $("risposta").textContent = carta.risposta;
+  mostraTesto($("domanda"), carta.domanda, carta.domanda_render);
+  mostraTesto($("risposta"), carta.risposta, carta.risposta_render);
   $("blocco-risposta").classList.add("d-none");
   $("voti").classList.add("d-none");
   $("avviso-voto").innerHTML = "";

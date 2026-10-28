@@ -91,6 +91,8 @@
 .contenuto-largo { max-width: 1320px; } /* vista a card: dopo .contenuto, a pari specificità */
 
 .testo-carta { white-space: pre-wrap; }
+.testo-carta.renderizzato { white-space: normal; } /* gli a capo del testo renderizzato sono già <br> */
+.testo-carta .katex-display { overflow-x: auto; overflow-y: hidden; }
 .min-w-0 { min-width: 0; } /* il testo di una riga di elenco può restringersi accanto ai bottoni */
 
 .navbar-verde { background-color: var(--bs-primary); }
