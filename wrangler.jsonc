@@ -5,11 +5,16 @@
 	"workers_dev": false,
 	"preview_urls": false,
 	"routes": [
-		{ "pattern": "flashcard.simonepugliese.com", "custom_domain": true }
+		{
+			"pattern": "flashcard.simonepugliese.com",
+			"custom_domain": true
+		}
 	],
 	// Ogni 10 minuti il Worker decide se è ora di mandare una domanda su Telegram (vedi src/telegram.ts).
 	"triggers": {
-		"crons": ["*/10 * * * *"]
+		"crons": [
+			"*/10 * * * *"
+		]
 	},
 	"assets": {
 		"directory": "./public"
@@ -24,7 +29,14 @@
 	],
 	// File dei materiali (immagini, PDF, testi): in D1 restano solo i metadati. Il bucket si crea con `wrangler r2 bucket create flashcard-files`.
 	"r2_buckets": [
-		{ "binding": "FILES", "bucket_name": "flashcard-files" }
+		{
+			"binding": "FILES",
+			"bucket_name": "flashcard-files"
+		},
+		{
+			"bucket_name": "flashcard-files",
+			"binding": "flashcard_files"
+		}
 	],
 	"observability": {
 		"logs": {
