@@ -77,6 +77,7 @@
         <button type="button" class="btn btn-outline-secondary" id="vista-card" onclick="impostaVista('card')">Card</button>
       </div>
       <div id="lista-carte" class="list-group"></div>
+      <section id="materiali-argomento" class="mt-4"></section>
     </section>
 
     <section id="ripasso" class="schermata d-none">
@@ -122,6 +123,7 @@
             <hr>
             <div class="small text-body-secondary mb-1">Risposta</div>
             <p class="fs-5 mb-0 testo-carta" id="risposta"></p>
+            <div id="spiegazione" class="mt-4"></div>
           </div>
         </div>
       </div>
@@ -172,44 +174,67 @@
     </div>
   </div>
 
+  <!-- I materiali stanno fuori dal form: i loro campi non devono finire nel salvataggio della carta. -->
   <div class="modal fade" id="modale-carta" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <form class="modal-content" novalidate>
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title h5"></h2>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
         </div>
         <div class="modal-body">
-          <div class="avviso-modale"></div>
-          <div class="mb-3">
-            <label class="form-label" for="campo-domanda">Domanda</label>
-            <textarea class="form-control" id="campo-domanda" name="domanda" rows="3" maxlength="5000" required></textarea>
-            <div class="invalid-feedback">Inserisci la domanda.</div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="campo-risposta">Risposta</label>
-            <textarea class="form-control" id="campo-risposta" name="risposta" rows="3" maxlength="5000" required></textarea>
-            <div class="invalid-feedback">Inserisci la risposta.</div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="campo-opzioni">Opzioni sbagliate <span class="text-body-secondary">(facoltativo)</span></label>
-            <textarea class="form-control" id="campo-opzioni" name="opzioni" rows="3"></textarea>
-            <div class="form-text">Una per riga, massimo 9. Se le inserisci, nel ripasso la carta diventa a scelta multipla.</div>
-          </div>
-          <label class="form-label" for="campo-difficolta">Difficoltà</label>
-          <select class="form-select" id="campo-difficolta" name="difficolta">
-            <option value="1">1 · Molto facile</option>
-            <option value="2">2 · Facile</option>
-            <option value="3" selected>3 · Media</option>
-            <option value="4">4 · Difficile</option>
-            <option value="5">5 · Molto difficile</option>
-          </select>
+          <form id="form-carta" novalidate>
+            <div class="avviso-modale"></div>
+            <div class="mb-3">
+              <label class="form-label" for="campo-domanda">Domanda</label>
+              <textarea class="form-control" id="campo-domanda" name="domanda" rows="3" maxlength="5000" required></textarea>
+              <div class="invalid-feedback">Inserisci la domanda.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="campo-risposta">Risposta</label>
+              <textarea class="form-control" id="campo-risposta" name="risposta" rows="3" maxlength="5000" required></textarea>
+              <div class="invalid-feedback">Inserisci la risposta.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="campo-opzioni">Opzioni sbagliate <span class="text-body-secondary">(facoltativo)</span></label>
+              <textarea class="form-control" id="campo-opzioni" name="opzioni" rows="3"></textarea>
+              <div class="form-text">Una per riga, massimo 9. Se le inserisci, nel ripasso la carta diventa a scelta multipla.</div>
+            </div>
+            <label class="form-label" for="campo-difficolta">Difficoltà</label>
+            <select class="form-select" id="campo-difficolta" name="difficolta">
+              <option value="1">1 · Molto facile</option>
+              <option value="2">2 · Facile</option>
+              <option value="3" selected>3 · Media</option>
+              <option value="4">4 · Difficile</option>
+              <option value="5">5 · Molto difficile</option>
+            </select>
+          </form>
+          <hr class="my-4">
+          <div id="materiali-carta"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annulla</button>
-          <button type="submit" class="btn btn-primary">Salva</button>
+          <button type="submit" form="form-carta" class="btn btn-primary">Salva</button>
         </div>
-      </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modale-spiegazione" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h5">Spiegazione</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+        </div>
+        <div class="modal-body">
+          <div class="small text-body-secondary">Domanda</div>
+          <div class="testo-carta text-break mb-2" id="spiegazione-domanda"></div>
+          <div class="small text-body-secondary">Risposta</div>
+          <div class="testo-carta text-break fw-semibold" id="spiegazione-risposta"></div>
+          <div id="spiegazione-modale" class="mt-4"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -265,6 +290,7 @@
         </div>
       </div>
       <div class="carta-azioni d-flex gap-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary spiega" aria-label="Spiegazione" title="Spiegazione"><span aria-hidden="true" class="fw-semibold">?</span></button>
         <button type="button" class="btn btn-sm btn-outline-secondary modifica" aria-label="Modifica" title="Modifica">
           <svg width="14" height="14" aria-hidden="true"><use href="#icona-modifica"/></svg>
         </button>
@@ -299,6 +325,76 @@
       <input class="form-check-input flex-shrink-0" type="checkbox" checked onchange="aggiornaInizia()">
       <span class="text-break"></span>
     </label>
+  </template>
+
+  <template id="modello-materiali">
+    <div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h6 mb-0 titolo"></h2>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary nuova-nota">+ Nota</button>
+          <button type="button" class="btn btn-sm btn-outline-primary nuovo-file">+ File</button>
+          <input type="file" class="d-none scegli-file" accept="image/*,application/pdf,text/plain,.txt">
+        </div>
+      </div>
+      <div class="avviso-materiali"></div>
+      <form class="editor-materiale bg-body border rounded p-3 mb-2 d-none" novalidate>
+        <input class="form-control mb-2" name="titolo" maxlength="100" placeholder="Titolo (facoltativo)" aria-label="Titolo">
+        <textarea class="form-control mb-2" name="testo" rows="5" maxlength="20000" placeholder="Testo della nota, formule tra $...$" aria-label="Testo"></textarea>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary annulla">Annulla</button>
+          <button type="submit" class="btn btn-sm btn-primary">Salva</button>
+        </div>
+      </form>
+      <div class="list-group elenco-materiali"></div>
+      <p class="small text-body-secondary mt-2 mb-0 aiuto"></p>
+    </div>
+  </template>
+
+  <template id="modello-materiale">
+    <div class="list-group-item d-flex align-items-start gap-2 py-2">
+      <a class="anteprima flex-shrink-0" target="_blank" rel="noopener"><img alt="" loading="lazy" width="64" height="64"></a>
+      <div class="flex-grow-1 min-w-0">
+        <span class="badge text-bg-secondary me-1 tipo"></span>
+        <a class="text-break nome" target="_blank" rel="noopener"></a>
+        <small class="text-body-secondary ms-1 dettagli"></small>
+        <details class="nota-materiale"><summary class="text-break"></summary><div class="testo-carta text-break small mt-2 corpo"></div></details>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 modifica" aria-label="Modifica" title="Modifica">
+        <svg width="14" height="14" aria-hidden="true"><use href="#icona-modifica"/></svg>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0 elimina" aria-label="Elimina" title="Elimina">
+        <svg width="14" height="14" aria-hidden="true"><use href="#icona-elimina"/></svg>
+      </button>
+    </div>
+  </template>
+
+  <template id="modello-spiegazione">
+    <div class="spiegazione">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <small class="text-body-secondary">Spiegazione</small>
+        <span class="badge obsoleta d-none">Obsoleta: carta o materiali cambiati</span>
+      </div>
+      <div class="testo-carta text-break testo"></div>
+      <small class="d-block text-body-secondary mt-1 info"></small>
+      <div class="d-flex flex-wrap gap-2 mt-2 azioni">
+        <button type="button" class="btn btn-sm btn-outline-primary genera"></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary scrivi"></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary copia">Copia prompt</button>
+      </div>
+      <div class="passo bg-body border rounded p-3 mt-3 d-none">
+        <div class="small fw-semibold mb-1">Materiali da usare</div>
+        <div class="list-group scelta-materiali mb-2"></div>
+        <div class="small mb-2 allegati d-none"></div>
+        <textarea class="form-control mb-2 campo-prompt d-none" rows="6" readonly aria-label="Prompt"></textarea>
+        <textarea class="form-control mb-2 campo-testo d-none" rows="6" maxlength="20000" placeholder="Scrivi o incolla la spiegazione, formule tra $...$" aria-label="Spiegazione"></textarea>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary annulla">Annulla</button>
+          <button type="button" class="btn btn-sm btn-primary conferma"></button>
+        </div>
+      </div>
+      <div class="avviso-spiegazione mt-2"></div>
+    </div>
   </template>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

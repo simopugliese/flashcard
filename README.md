@@ -21,8 +21,9 @@ flashcard/
 │   ├── ripasso.ts       carte da ripassare e registrazione del voto, usate da API e bot
 │   └── telegram.ts      bot Telegram: invio programmato e gestione dei click
 ├── public/
-│   ├── index.html       interfaccia (Bootstrap da CDN)
-│   └── app.js           logica del frontend (JavaScript puro)
+│   ├── index.html       interfaccia (Bootstrap e CSS di KaTeX da CDN)
+│   ├── app.js           logica del frontend (JavaScript puro)
+│   └── stile.css        colori del logo e stili propri (card, materiali, spiegazioni)
 ├── drizzle/             migrazioni SQL generate da drizzle-kit
 ├── drizzle.config.ts
 ├── wrangler.jsonc       configurazione Worker, dominio, cron, asset statici, D1 e R2
@@ -110,7 +111,9 @@ Ad **argomenti** e **carte** si possono collegare materiali di studio: **note** 
   | Lunghezza del titolo | 100 caratteri |
 
   Le note di testo non hanno un limite di numero e non c'è un tetto sullo spazio totale in R2: per i costi si usa l'allerta di budget di Cloudflare.
-- **Stato:** per ora c'è solo il backend. L'interfaccia e l'inclusione nell'esportazione sono i passi successivi.
+- **Nell'app:** i materiali dell'argomento stanno in fondo alla sua pagina, quelli della carta nella finestra di modifica della carta (per una carta nuova, dopo averla salvata). Le immagini hanno un'anteprima e si aprono in una nuova scheda; le note si espandono mostrando le formule. Aggiunte, modifiche ed eliminazioni si salvano subito, indipendentemente dal pulsante Salva della carta.
+- **Immagini ridotte nel browser:** prima dell'invio, un'immagine oltre i 2 MB o con il lato lungo oltre 1600 px viene ridimensionata a 1600 px e ricompressa in WebP (JPEG se il browser non sa produrre WebP), così rientra quasi sempre nel limite. Le immagini già piccole partono intatte, per non perdere nitidezza su schemi e testo; le GIF restano com'è perché possono essere animate. Anche le foto HEIC dell'iPhone vengono convertite, se il browser sa leggerle. I PDF oltre il limite vengono rifiutati subito, senza inviarli. Costanti `MAX_FILE_BYTES` e `LATO_MAX_IMMAGINE` in cima a `public/app.js`.
+- **Stato:** l'inclusione dei materiali nell'esportazione è il passo successivo.
 
 ### LaTeX
 
@@ -141,6 +144,7 @@ Ogni carta può avere **una spiegazione**, scritta a mano oppure generata dall'A
 - **Sicurezza del prompt:** carta e materiali arrivano al modello tra tag (`<carta>`, `<materiale>`) con `<`, `>`, `&` escapati, e il prompt di sistema dice di trattarli solo come dati, ignorando eventuali istruzioni contenute. Il testo restituito passa da `rendi` come tutto il resto (niente HTML dal modello).
 - **Senza AI:** `POST /carte/:id/spiegazione/prompt` restituisce il prompt già pronto da incollare in una chat qualsiasi (gli allegati sono elencati da aggiungere a mano); la risposta si salva con `PUT /carte/:id/spiegazione`. Così l'app funziona anche senza provider configurato.
 - **Quando si chiama l'AI:** solo da `POST /carte/:id/spiegazione/genera`. Mai dal cron né da Telegram.
+- **Nell'app:** nel ripasso la spiegazione compare sotto la risposta, appena la si mostra (si legge solo quella salvata, senza chiamare l'AI). Nella vista a card si apre con il pulsante **?** della carta. I pulsanti sono *Genera con AI* (*Rigenera* se esiste già; nascosto se l'AI non è configurata), *Scrivi a mano* (*Modifica*) e *Copia prompt*. Ognuno apre prima un riquadro di conferma con i materiali da usare, quelli della carta già spuntati e quelli dell'argomento no: nessuna chiamata AI parte con un solo clic. Rigenerare una spiegazione scritta a mano chiede conferma. *Copia prompt* mette il prompt negli appunti (se il browser non lo permette, lo mostra da copiare), elenca gli allegati da aggiungere a mano e apre il campo dove incollare la risposta della chat esterna.
 - **Limiti** (costanti in cima a `src/ai.ts`; il numero di materiali è in `src/validazione.ts`):
 
   | Limite | Valore |

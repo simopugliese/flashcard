@@ -2,23 +2,31 @@ const $ = (id) => document.getElementById(id);
 const stato = { materia: null, argomento: null, coda: [], indice: 0 };
 const ricerca = { carte: [], esclusi: new Set() };
 const MAX_RISULTATI = 100;
+// Come in src/validazione.ts: le immagini più grandi vengono ridotte e ricompresse nel browser prima dell'invio.
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const LATO_MAX_IMMAGINE = 1600;
+const TIPI_FILE = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"];
 const caricamento = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
+const caricamentoPiccolo = '<div class="py-2"><div class="spinner-border spinner-border-sm text-primary" role="status"></div></div>';
 
+// Con un FormData (caricamento di un file) il corpo parte così com'è e il browser imposta da sé il Content-Type multipart.
 async function api(percorso, metodo = "GET", dati) {
+  const form = dati instanceof FormData;
   let res;
   try {
     res = await fetch(percorso, {
       method: metodo,
-      headers: { "Content-Type": "application/json" },
-      body: dati && JSON.stringify(dati),
+      headers: form ? {} : { "Content-Type": "application/json" },
+      body: form ? dati : dati && JSON.stringify(dati),
     });
   } catch {
     throw new Error("Impossibile contattare il server. Controlla la connessione e riprova.");
   }
   if (res.status === 404) throw new Error("Elemento non trovato: potrebbe essere stato eliminato.");
-  if (res.status >= 500) throw new Error("Errore del server, riprova tra poco.");
   if (!res.ok) {
-    const errore = await res.json().then((j) => j?.errore, () => null);
+    // Il 500 non spiega nulla («errore interno»); gli altri (anche 502 e 503 dell'AI) hanno un messaggio utile.
+    const errore = res.status === 500 ? null : await res.json().then((j) => j?.errore, () => null);
+    if (res.status >= 500 && !errore) throw new Error("Errore del server, riprova tra poco.");
     throw Object.assign(new Error(errore ? `Operazione non riuscita: ${errore}.` : "Operazione non riuscita. Controlla i dati e riprova."), { stato: res.status });
   }
   return res.status === 204 ? null : res.json();
@@ -57,7 +65,9 @@ function apriModale(id, titolo, valori, salva) {
     form.classList.add("was-validated");
     if (!form.checkValidity()) return;
     const dati = Object.fromEntries(new FormData(form));
-    if (await esegui(form.querySelector("[type=submit]"), errore, () => salva(dati))) bootstrap.Modal.getInstance(modale).hide();
+    // form.elements comprende anche un submit fuori dal form collegato con l'attributo form= (modale della carta).
+    const bottone = [...form.elements].find((campo) => campo.type === "submit");
+    if (await esegui(bottone, errore, () => salva(dati))) bootstrap.Modal.getInstance(modale).hide();
   };
   modale.addEventListener("shown.bs.modal", () => form.querySelector("input, textarea").focus(), { once: true });
   bootstrap.Modal.getOrCreateInstance(modale).show();
@@ -221,6 +231,7 @@ function apriArgomento(argomento) {
   $("indietro-materia").textContent = "← " + stato.materia.nome_materia;
   mostra("argomento");
   caricaCarte();
+  pannelloMateriali($("materiali-argomento"), `/argomenti/${argomento.id_argomento}`, "Materiali dell'argomento");
 }
 
 function vistaCarte() {
@@ -268,6 +279,7 @@ function cartaFlip(carta, ripasso) {
   elemento.querySelector(".sbagliate").replaceChildren(
     ...(carta.opzioni ?? []).map((o) => Object.assign(document.createElement("li"), { textContent: o })),
   );
+  elemento.querySelector(".spiega").onclick = () => apriSpiegazione(carta);
   elemento.querySelector(".modifica").onclick = () => modificaCarta(carta);
   elemento.querySelector(".elimina").onclick = () => eliminaCarta(carta);
   return elemento;
@@ -311,6 +323,7 @@ function nuovaCarta() {
     avviso("Carta creata.", "success");
     caricaCarte();
   });
+  $("materiali-carta").innerHTML = '<p class="small text-body-secondary mb-0">Salva la carta, poi riaprila per aggiungere materiali.</p>';
 }
 
 function modificaCarta(carta, dopo = caricaCarte) {
@@ -321,6 +334,7 @@ function modificaCarta(carta, dopo = caricaCarte) {
     avviso("Carta modificata.", "success");
     dopo();
   });
+  pannelloMateriali($("materiali-carta"), `/carte/${carta.id_carta}`, "Materiali della carta");
 }
 
 function eliminaCarta(carta) {
@@ -329,6 +343,310 @@ function eliminaCarta(carta) {
     avviso("Carta eliminata.", "success");
     caricaCarte();
   });
+}
+
+// ---------- Materiali ----------
+
+const dimensione = (byte) => (byte < 1024 * 1024 ? `${Math.max(1, Math.round(byte / 1024))} KB` : `${(byte / 1024 / 1024).toFixed(1)} MB`);
+const nomeMateriale = (m) => m.titolo || (m.tipo === "testo" ? m.testo.slice(0, 60) + (m.testo.length > 60 ? "…" : "") : "File senza nome");
+const TIPO_FILE = { "application/pdf": "PDF", "text/plain": "Testo" };
+const tipoMateriale = (m) => (m.tipo === "testo" ? "Nota" : m.mime.startsWith("image/") ? "Immagine" : (TIPO_FILE[m.mime] ?? "File"));
+
+// Restituisce il file da caricare: le immagini troppo grandi (byte o lato) diventano WebP, o JPEG se il browser non sa
+// produrre WebP, con lato lungo al massimo LATO_MAX_IMMAGINE. Le immagini già piccole restano intatte (schemi e testo
+// non perdono qualità), le GIF restano com'è perché potrebbero essere animate.
+async function preparaFile(file) {
+  const mb = MAX_FILE_BYTES / 1024 / 1024;
+  const limite = `Il file supera il limite di ${mb} MB.`;
+  if (file.type === "image/svg+xml") throw new Error("Le immagini SVG non sono ammesse: esportale in PNG.");
+  if (!file.type.startsWith("image/") || file.type === "image/gif") {
+    if (!TIPI_FILE.includes(file.type)) throw new Error("Tipo di file non ammesso: puoi caricare immagini, PDF e file di testo.");
+    if (file.size > MAX_FILE_BYTES) throw new Error(limite);
+    return file;
+  }
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("Il browser non riesce a leggere questa immagine: convertila in JPEG o PNG.");
+  }
+  try {
+    const lato = Math.max(bitmap.width, bitmap.height);
+    if (TIPI_FILE.includes(file.type) && file.size <= MAX_FILE_BYTES && lato <= LATO_MAX_IMMAGINE) return file;
+    const scala = Math.min(1, LATO_MAX_IMMAGINE / lato);
+    const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(bitmap.width * scala), height: Math.round(bitmap.height * scala) });
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const comprimi = (tipo, qualita) => new Promise((fatto) => canvas.toBlob(fatto, tipo, qualita));
+    let blob = await comprimi("image/webp", 0.85);
+    if (blob?.type !== "image/webp") {
+      // Il JPEG non ha trasparenza: si mette un fondo bianco dietro l'immagine.
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      blob = await comprimi("image/jpeg", 0.85);
+    }
+    if (blob && blob.size > MAX_FILE_BYTES) blob = await comprimi(blob.type, 0.7);
+    if (!blob || blob.size > MAX_FILE_BYTES) throw new Error(`Non riesco a ridurre l'immagine sotto ${mb} MB.`);
+    const nome = file.name.replace(/\.[^.]*$/, "") || "immagine";
+    return new File([blob], `${nome}.${blob.type === "image/webp" ? "webp" : "jpg"}`, { type: blob.type });
+  } finally {
+    bitmap.close();
+  }
+}
+
+// Elenco dei materiali di un argomento o di una carta (`percorso` = "/argomenti/ID" o "/carte/ID"), con aggiunta di note
+// e file. Le modifiche si salvano subito. Per eliminare si usa confirm(): nel modale della carta non si può aprirne un altro.
+function pannelloMateriali(contenitore, percorso, titolo) {
+  const pannello = $("modello-materiali").content.firstElementChild.cloneNode(true);
+  const lista = pannello.querySelector(".elenco-materiali");
+  const avvisi = pannello.querySelector(".avviso-materiali");
+  const editor = pannello.querySelector(".editor-materiale");
+  const scegli = pannello.querySelector(".scegli-file");
+  const bottoneFile = pannello.querySelector(".nuovo-file");
+  pannello.querySelector(".titolo").textContent = titolo;
+  pannello.querySelector(".aiuto").textContent = "Immagini, PDF e file di testo fino a 2 MB (le immagini grandi vengono ridotte). Le modifiche si salvano subito.";
+  contenitore.replaceChildren(pannello);
+
+  const ricarica = async () => {
+    lista.innerHTML = caricamentoPiccolo;
+    try {
+      const materiali = await api(`${percorso}/materiali`);
+      if (materiali.length) return lista.replaceChildren(...materiali.map(rigaMateriale));
+      lista.innerHTML = '<p class="small text-body-secondary mb-0">Nessun materiale.</p>';
+    } catch (e) {
+      lista.innerHTML = "";
+      avviso(e.message, "danger", avvisi);
+    }
+  };
+
+  // Senza `m` crea una nota; con una nota ne modifica titolo e testo, con un file solo il titolo.
+  const apriEditor = (m) => {
+    const nota = !m || m.tipo === "testo";
+    editor.reset();
+    editor.classList.remove("d-none");
+    editor.elements.titolo.value = m?.titolo ?? "";
+    editor.elements.testo.value = m?.testo ?? "";
+    editor.elements.testo.classList.toggle("d-none", !nota);
+    editor.onsubmit = async (e) => {
+      e.preventDefault();
+      const titolo = editor.elements.titolo.value.trim();
+      const testo = editor.elements.testo.value.trim();
+      if (nota && !testo) return avviso("Scrivi il testo della nota.", "danger", avvisi);
+      const ok = await esegui(editor.querySelector("[type=submit]"), avvisi, async () => {
+        if (!m) await api(`${percorso}/materiali`, "POST", { titolo, testo });
+        else await api(`/materiali/${m.id_materiale}`, "PUT", nota ? { titolo, testo } : { titolo });
+      });
+      if (!ok) return;
+      avvisi.innerHTML = "";
+      editor.classList.add("d-none");
+      ricarica();
+    };
+    (nota ? editor.elements.testo : editor.elements.titolo).focus();
+  };
+  editor.querySelector(".annulla").onclick = () => editor.classList.add("d-none");
+
+  function rigaMateriale(m) {
+    const elemento = $("modello-materiale").content.firstElementChild.cloneNode(true);
+    const file = `/materiali/${m.id_materiale}/file`;
+    elemento.querySelector(".tipo").textContent = tipoMateriale(m);
+    if (m.tipo === "testo") {
+      elemento.querySelector(".anteprima").remove();
+      elemento.querySelector(".nome").remove();
+      elemento.querySelector(".dettagli").remove();
+      elemento.querySelector("summary").append(elemento.querySelector(".tipo"), nomeMateriale(m));
+      mostraTesto(elemento.querySelector(".corpo"), m.testo, m.testo_render);
+    } else {
+      elemento.querySelector(".nota-materiale").remove();
+      const anteprima = elemento.querySelector(".anteprima");
+      if (m.mime.startsWith("image/")) {
+        anteprima.href = file;
+        anteprima.querySelector("img").src = file;
+      } else anteprima.remove();
+      Object.assign(elemento.querySelector(".nome"), { href: file, textContent: nomeMateriale(m) });
+      elemento.querySelector(".dettagli").textContent = dimensione(m.dimensione);
+    }
+    elemento.querySelector(".modifica").onclick = () => apriEditor(m);
+    const elimina = elemento.querySelector(".elimina");
+    elimina.onclick = () => {
+      if (!confirm(`Eliminare «${nomeMateriale(m)}»?`)) return;
+      esegui(elimina, avvisi, async () => {
+        await api(`/materiali/${m.id_materiale}`, "DELETE");
+        ricarica();
+      });
+    };
+    return elemento;
+  }
+
+  pannello.querySelector(".nuova-nota").onclick = () => apriEditor();
+  bottoneFile.onclick = () => scegli.click();
+  scegli.onchange = () => {
+    const scelto = scegli.files[0];
+    scegli.value = "";
+    if (!scelto) return;
+    const etichetta = bottoneFile.textContent;
+    bottoneFile.textContent = "Caricamento…";
+    esegui(bottoneFile, avvisi, async () => {
+      try {
+        const corpo = new FormData();
+        const pronto = await preparaFile(scelto);
+        corpo.append("file", pronto, pronto.name);
+        await api(`${percorso}/materiali`, "POST", corpo);
+        avvisi.innerHTML = "";
+        ricarica();
+      } finally {
+        bottoneFile.textContent = etichetta;
+      }
+    });
+  };
+  ricarica();
+}
+
+// ---------- Spiegazione ----------
+
+// Carica e mostra la spiegazione di una carta in `contenitore`. Le risposte arrivate dopo che il contenitore è passato
+// a un'altra carta (ripasso) vengono scartate grazie al token in `dataset.richiesta`.
+async function bloccoSpiegazione(contenitore, carta) {
+  const token = (contenitore.dataset.richiesta = String(Date.now() + Math.random()));
+  contenitore.innerHTML = caricamentoPiccolo;
+  try {
+    const s = await api(`/carte/${carta.id_carta}/spiegazione`);
+    if (contenitore.dataset.richiesta === token) disegnaSpiegazione(contenitore, carta, s, token);
+  } catch (e) {
+    if (contenitore.dataset.richiesta !== token) return;
+    contenitore.innerHTML = "";
+    avviso(e.message, "danger", contenitore);
+  }
+}
+
+// Ogni azione passa da un riquadro di conferma con i materiali da usare: quelli della carta spuntati, quelli
+// dell'argomento no. Così nessuna chiamata AI parte con un solo clic.
+function disegnaSpiegazione(contenitore, carta, { spiegazione: s, obsoleta, ai }, token) {
+  const blocco = $("modello-spiegazione").content.firstElementChild.cloneNode(true);
+  const q = (selettore) => blocco.querySelector(selettore);
+  const avvisi = q(".avviso-spiegazione");
+  const passo = q(".passo");
+  const scelta = q(".scelta-materiali");
+  const conferma = q(".conferma");
+  const attuale = () => contenitore.dataset.richiesta === token;
+  const aggiorna = (nuovo) => attuale() && disegnaSpiegazione(contenitore, carta, nuovo, token);
+
+  if (s) mostraTesto(q(".testo"), s.testo, s.testo_render);
+  else q(".testo").innerHTML = '<span class="text-body-secondary">Nessuna spiegazione.</span>';
+  const data = s && new Date(s.creata_il).toLocaleDateString("it-IT");
+  q(".info").textContent = !s
+    ? ai ? "" : "AI non configurata: con «Copia prompt» puoi usare una chat esterna e incollare qui la risposta."
+    : s.fonte === "ai" ? `Generata con ${s.modello} · ${data}` : `Scritta a mano · ${data}`;
+  q(".obsoleta").classList.toggle("d-none", !obsoleta);
+  q(".genera").textContent = s ? "Rigenera con AI" : "Genera con AI";
+  q(".genera").classList.toggle("d-none", !ai);
+  q(".scrivi").textContent = s ? "Modifica a mano" : "Scrivi a mano";
+
+  let materiali;
+  const caricaMateriali = async () => {
+    if (materiali) return;
+    scelta.innerHTML = caricamentoPiccolo;
+    const [dellaCarta, dellArgomento] = await Promise.all([
+      api(`/carte/${carta.id_carta}/materiali`),
+      api(`/argomenti/${carta.id_argomento}/materiali`),
+    ]);
+    materiali = [...dellaCarta.map((m) => [m, true]), ...dellArgomento.map((m) => [m, false])];
+    if (!materiali.length) return (scelta.innerHTML = '<p class="small text-body-secondary mb-0">Né la carta né il suo argomento hanno materiali.</p>');
+    scelta.replaceChildren(
+      ...materiali.map(([m, spuntato]) => {
+        const voce = document.createElement("label");
+        voce.className = "list-group-item d-flex gap-2 py-2 small";
+        const casella = Object.assign(document.createElement("input"), { type: "checkbox", className: "form-check-input flex-shrink-0", value: m.id_materiale, checked: spuntato });
+        const testo = Object.assign(document.createElement("span"), { className: "text-break", textContent: `${tipoMateriale(m)} · ${nomeMateriale(m)}` });
+        const dove = Object.assign(document.createElement("span"), { className: "text-body-secondary ms-auto flex-shrink-0", textContent: spuntato ? "carta" : "argomento" });
+        voce.append(casella, testo, dove);
+        return voce;
+      }),
+    );
+  };
+  const scelti = () => [...scelta.querySelectorAll("input:checked")].map((c) => +c.value);
+
+  const campoTesto = q(".campo-testo");
+  const apriPasso = (modo) => {
+    avvisi.innerHTML = "";
+    passo.classList.remove("d-none");
+    q(".campo-prompt").classList.add("d-none");
+    q(".allegati").classList.add("d-none");
+    campoTesto.classList.toggle("d-none", modo !== "scrivi");
+    if (modo === "scrivi") {
+      campoTesto.value = s?.testo ?? "";
+      campoTesto.focus();
+    }
+    conferma.textContent = { genera: s ? "Rigenera" : "Genera", scrivi: "Salva spiegazione", copia: "Copia prompt" }[modo];
+    conferma.onclick = () => azioni[modo]();
+    conferma.disabled = true;
+    caricaMateriali()
+      .then(() => (conferma.disabled = false))
+      .catch((e) => {
+        scelta.innerHTML = "";
+        avviso(e.message, "danger", avvisi);
+      });
+  };
+
+  const azioni = {
+    genera: () => {
+      if (s?.fonte === "manuale" && !confirm("Sostituire la spiegazione scritta a mano con una generata dall'AI?")) return;
+      conferma.textContent = "Generazione…";
+      esegui(conferma, avvisi, async () => {
+        try {
+          aggiorna(await api(`/carte/${carta.id_carta}/spiegazione/genera`, "POST", { materiali: scelti(), rigenera: !!s }));
+        } finally {
+          conferma.textContent = s ? "Rigenera" : "Genera";
+        }
+      });
+    },
+    scrivi: () => {
+      const testo = campoTesto.value.trim();
+      if (!testo) return avviso("Scrivi la spiegazione prima di salvarla.", "danger", avvisi);
+      esegui(conferma, avvisi, async () => aggiorna(await api(`/carte/${carta.id_carta}/spiegazione`, "PUT", { testo, materiali: scelti() })));
+    },
+    // Dopo la copia il riquadro diventa quello della scrittura a mano, per incollare la risposta della chat esterna.
+    copia: () =>
+      esegui(conferma, avvisi, async () => {
+        const { prompt, allegati } = await api(`/carte/${carta.id_carta}/spiegazione/prompt`, "POST", { materiali: scelti() });
+        let copiato = true;
+        try {
+          await navigator.clipboard.writeText(prompt);
+        } catch {
+          copiato = false;
+        }
+        apriPasso("scrivi");
+        campoTesto.value = "";
+        const campoPrompt = q(".campo-prompt");
+        if (!copiato) {
+          campoPrompt.value = prompt;
+          campoPrompt.classList.remove("d-none");
+          campoPrompt.select();
+        }
+        const elenco = q(".allegati");
+        elenco.replaceChildren(
+          document.createTextNode(copiato ? "Prompt copiato. " : "Copia il prompt qui sotto. "),
+          ...(allegati.length
+            ? [document.createTextNode("Allega a mano: "), ...allegati.flatMap((a, i) => [i ? ", " : "", Object.assign(document.createElement("a"), { href: `/materiali/${a.id_materiale}/file`, target: "_blank", rel: "noopener", textContent: a.titolo || a.mime })])]
+            : []),
+          document.createTextNode(" Poi incolla qui la risposta e salva."),
+        );
+        elenco.classList.remove("d-none");
+      }),
+  };
+
+  q(".genera").onclick = () => apriPasso("genera");
+  q(".scrivi").onclick = () => apriPasso("scrivi");
+  q(".copia").onclick = () => apriPasso("copia");
+  q(".annulla").onclick = () => passo.classList.add("d-none");
+  contenitore.replaceChildren(blocco);
+}
+
+function apriSpiegazione(carta) {
+  mostraTesto($("spiegazione-domanda"), carta.domanda, carta.domanda_render);
+  mostraTesto($("spiegazione-risposta"), carta.risposta, carta.risposta_render);
+  bloccoSpiegazione($("spiegazione-modale"), carta);
+  bootstrap.Modal.getOrCreateInstance($("modale-spiegazione")).show();
 }
 
 async function apriRipasso() {
@@ -402,6 +720,8 @@ function mostraCarta() {
   mostraTesto($("domanda"), carta.domanda, carta.domanda_render);
   mostraTesto($("risposta"), carta.risposta, carta.risposta_render);
   $("blocco-risposta").classList.add("d-none");
+  $("spiegazione").replaceChildren();
+  $("spiegazione").dataset.richiesta = ""; // scarta le risposte ancora in arrivo per la carta precedente
   $("voti").classList.add("d-none");
   $("avviso-voto").innerHTML = "";
   const quiz = carta.opzioni?.length;
@@ -452,6 +772,7 @@ function mostraRisposta() {
   $("blocco-risposta").classList.remove("d-none");
   $("voti").classList.remove("d-none");
   $("mostra-risposta").classList.add("d-none");
+  bloccoSpiegazione($("spiegazione"), stato.coda[stato.indice].carta);
 }
 
 async function vota(voto) {

@@ -127,9 +127,18 @@
 }
 .carta-faccia.retro { transform: rotateY(180deg); border-color: var(--colore-arancione); background: var(--colore-crema-arancio); }
 .carta-faccia .etichetta { position: absolute; top: .9rem; left: 1rem; text-transform: uppercase; letter-spacing: .04em; }
-.carta-faccia .multipla { position: absolute; top: .75rem; right: 5.5rem; }
+.carta-faccia .multipla { position: absolute; top: .75rem; right: 7.5rem; } /* lascia spazio ai tre bottoni di .carta-azioni */
 
 .carta-azioni { position: absolute; top: .5rem; right: .5rem; z-index: 1; }
+
+/* ---------- Materiali ---------- */
+.anteprima img { width: 64px; height: 64px; object-fit: cover; border-radius: .375rem; border: 1px solid var(--bs-border-color); }
+.nota-materiale summary { cursor: pointer; }
+.nota-materiale .corpo { max-height: 20rem; overflow-y: auto; }
+
+/* ---------- Spiegazione ---------- */
+.spiegazione { background: var(--colore-menta); border: 1px solid #c5dcc5; border-radius: .5rem; padding: .75rem 1rem; }
+.spiegazione .obsoleta { background: var(--colore-arancione); }
 
 .sbagliate li { text-decoration: line-through; }
 .sbagliate li::before { content: "✗ "; }
