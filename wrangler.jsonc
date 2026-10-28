@@ -32,10 +32,6 @@
 		{
 			"binding": "FILES",
 			"bucket_name": "flashcard-files"
-		},
-		{
-			"bucket_name": "flashcard-files",
-			"binding": "flashcard_files"
 		}
 	],
 	"observability": {

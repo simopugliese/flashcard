@@ -171,7 +171,7 @@ export const leggiImportazione = (corpo: unknown) => {
 // Limiti dei materiali. 2 MB per file: su una materia da ~1000 carte il totale resta gestibile (il frontend ricomprime le immagini).
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_FILE_PER_CARTA = 3;
-export const MAX_FILE_PER_ARGOMENTO = 50;
+export const MAX_FILE_PER_ARGOMENTO = 150;
 export const MAX_TESTO_MATERIALE = 20000;
 
 // Solo formati che il browser non esegue: niente SVG né HTML (XSS). Il tipo dichiarato dal client non basta,
