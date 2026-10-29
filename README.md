@@ -164,10 +164,11 @@ Il provider si sceglie con le variabili del Worker. Senza `AI_PROVIDER` la funzi
 |---|---|---|
 | `AI_PROVIDER` | `anthropic` | `openai` |
 | `AI_API_KEY` | obbligatoria | facoltativa (Ollama in locale non la vuole) |
-| `AI_MODEL` | facoltativa, default `claude-opus-5-5` | obbligatoria |
+| `AI_MODEL` | facoltativa, default `claude-sonnet-5-5` | obbligatoria |
 | `AI_BASE_URL` | – | obbligatoria, es. `https://api.openai.com/v1` (il Worker aggiunge `/chat/completions`) |
 
 - Con Anthropic i PDF sono supportati; con l'adapter OpenAI-compatibile no (400 se selezionati), perché non c'è un formato standard. Per i modelli Anthropic recenti la richiesta abilita il fallback lato server: se il modello rifiuta, l'API ripete la richiesta con un altro modello, e `modello` registra quello che ha risposto davvero.
+- Con Anthropic la richiesta usa sempre `effort: "medium"` (costante `EFFORT` in `src/ai.ts`): meno ragionamento, quindi meno token di output pagati, che per spiegazioni brevi bastano. I modelli che non accettano `effort` (es. Haiku 4.5, Sonnet 4.5) rispondono 400.
 - **La chiave è il vero rischio di spesa.** Usa una chiave **dedicata a questo progetto**, imposta un **limite di spesa mensile** sulla console del provider e salvala solo come secret:
   ```bash
   npx wrangler secret put AI_PROVIDER   # anthropic oppure openai
